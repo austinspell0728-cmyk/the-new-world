@@ -513,7 +513,7 @@ setCharacterPortrait(
   </div>
 </div>
 )}
-            <div className="rounded-lg border border-white/10 bg-black/40 p-5">
+            <div className="hidden">
               <h3 className="mb-3 font-semibold text-white">
                 Supabase Connection Test
               </h3>
@@ -582,12 +582,12 @@ setCharacterPortrait(
 
             <div>
               <p className="text-gray-500">Ancestry</p>
-              <p>Unknown</p>
+              <p>{testRace ? testRace.ancestry.map((race) => race.name).join(" / ") : "Unknown"}</p>
             </div>
 
             <div>
               <p className="text-gray-500">Potential</p>
-              <p>Undetermined</p>
+              <p>{testRace ? `${testRace.potential}/100` : "Undetermined"}</p>
               </div>  
 <div>
   <p className="text-gray-500">Known Factions</p>
