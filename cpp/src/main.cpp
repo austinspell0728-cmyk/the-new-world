@@ -2,12 +2,18 @@
 //
 // Entry point: opens the window and runs the main loop.
 //
-// Each frame does three things in order:
-//   1. Read input  (platform/InputReader)
-//   2. Update game (game/Game, in fixed time steps)
-//   3. Draw        (platform/Renderer)
+// Each frame does four things in order:
+//   1. Read input   (platform/InputReader)
+//   2. Update game  (game/Game, in fixed time steps)
+//   3. Aim camera   (platform/CameraRig)
+//   4. Draw         (platform/Renderer)
+//
+// Optional: `new-world --screenshot build/shot.png` runs a short moment,
+// saves one frame to that file and quits. Handy for checking the view
+// without playing.
 
 #include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <iostream>
 
@@ -16,11 +22,18 @@
 #include "game/Game.h"
 #include "game/GameData.h"
 #include "game/World.h"
+#include "platform/CameraRig.h"
 #include "platform/InputReader.h"
 #include "platform/RenderConfig.h"
 #include "platform/Renderer.h"
 
-int main() {
+int main(int argc, char** argv) {
+    // --screenshot <file>: save a frame and exit (see header comment).
+    const char* screenshotPath = nullptr;
+    if (argc == 3 && std::strcmp(argv[1], "--screenshot") == 0) {
+        screenshotPath = argv[2];
+    }
+
     // Build the world before opening a window, so a broken map reports a
     // clear error instead of flashing an empty window.
     game::Game game = [] {
@@ -36,7 +49,8 @@ int main() {
                platform::render::kWindowTitle);
     SetTargetFPS(platform::render::kTargetFps);
 
-    platform::Renderer renderer;
+    platform::CameraRig cameraRig;
+    const platform::Renderer renderer;
 
     // Fixed time step: real elapsed time is collected in `accumulator`, and
     // the game advances in equal slices of kFixedTimeStep. Rendering can run
@@ -49,6 +63,7 @@ int main() {
     // of catch-up steps at once.
     constexpr float kMaxFrameTime = 0.25f;
 
+    int frame = 0;
     while (!WindowShouldClose()) { // Esc or the window's close button
         float frameTime = GetFrameTime();
         if (frameTime > kMaxFrameTime) {
@@ -64,7 +79,14 @@ int main() {
             accumulator -= dt;
         }
 
-        renderer.draw(game);
+        cameraRig.follow(game.player().position);
+        renderer.draw(game, cameraRig);
+
+        // Screenshot mode: wait a few frames so the window has settled.
+        if (screenshotPath != nullptr && ++frame == 30) {
+            TakeScreenshot(screenshotPath);
+            break;
+        }
     }
 
     CloseWindow();

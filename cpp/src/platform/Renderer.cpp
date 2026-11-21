@@ -1,11 +1,14 @@
 // Renderer.cpp
 //
-// World units (tiles) are converted to pixels here and only here, by
-// multiplying by kPixelsPerTile.
+// Placeholder 3D art: every tile and the player are simple flat-colored
+// shapes. Positions come straight from the game in tiles, which raylib
+// uses directly as its 3D units (1 tile = 1 unit).
+//
+// Tile (x, z) covers the ground square from (x, z) to (x + 1, z + 1), so
+// its centre is at (x + 0.5, z + 0.5).
 
 #include "Renderer.h"
 
-#include <algorithm>
 #include <cmath>
 
 #include "RenderConfig.h"
@@ -15,7 +18,7 @@ namespace platform {
 namespace {
 
 // Picks the color for a tile type. Purely visual: whether a tile blocks
-// movement is decided by game::isSolid, not by its color.
+// movement is decided by game::isSolid, not by its look.
 Color colorFor(game::Tile tile) {
     switch (tile) {
     case game::Tile::Grass: return render::kGrassColor;
@@ -26,97 +29,92 @@ Color colorFor(game::Tile tile) {
     return MAGENTA; // Bright "missing" color makes a forgotten tile type obvious.
 }
 
-// Converts a world-space ground point to pixel space for this top-down view
-// (before the camera is applied): X goes right, Z goes down the screen.
-Vector2 toPixels(game::Vec3 world) {
-    return {world.x * render::kPixelsPerTile, world.z * render::kPixelsPerTile};
-}
+Vector3 toRaylib(game::Vec3 v) { return {v.x, v.y, v.z}; }
 
-// Keeps a camera centre between `low` and `high`. If the map is smaller
-// than the screen on this axis, centre the map instead.
-float clampCameraAxis(float value, float low, float high) {
-    if (low > high) {
-        return (low + high) / 2.0f;
-    }
-    return std::clamp(value, low, high);
+// Draws a box covering tile (x, z) whose top is at `topY` and whose
+// bottom is at `bottomY`.
+void drawTileBox(int x, int z, float bottomY, float topY, Color fill, Color edge) {
+    const float height = topY - bottomY;
+    const Vector3 centre{x + 0.5f, bottomY + height / 2.0f, z + 0.5f};
+    DrawCube(centre, 1.0f, height, 1.0f, fill);
+    DrawCubeWires(centre, 1.0f, height, 1.0f, edge);
 }
 
 } // namespace
 
-Renderer::Renderer() {
-    // offset: where on the screen the camera's target appears (screen centre).
-    camera_.offset = {render::kWindowWidth / 2.0f, render::kWindowHeight / 2.0f};
-    camera_.rotation = 0.0f;
-    camera_.zoom = 1.0f;
-}
-
-void Renderer::draw(const game::Game& game) {
-    updateCamera(game);
-
+void Renderer::draw(const game::Game& game, const CameraRig& cameraRig) const {
     BeginDrawing();
-    ClearBackground(render::kBackgroundColor);
+    ClearBackground(render::kSkyColor);
 
-    // Everything between BeginMode2D and EndMode2D is drawn in world pixel
-    // coordinates and moved by the camera, so it scrolls as the player walks.
-    BeginMode2D(camera_);
+    // Everything between BeginMode3D and EndMode3D is drawn in world space
+    // and seen through the camera.
+    BeginMode3D(cameraRig.camera());
     drawWorld(game.world());
     drawPlayer(game.player());
-    EndMode2D();
+    EndMode3D();
 
-    // The HUD is drawn after EndMode2D so it stays fixed on the screen.
+    // The HUD is drawn after EndMode3D so it stays fixed on the screen.
     drawHud(game);
 
     EndDrawing();
 }
 
-void Renderer::updateCamera(const game::Game& game) {
-    const Vector2 playerPixels = toPixels(game.player().position);
-    const float mapWidth = game.world().width() * render::kPixelsPerTile;
-    const float mapHeight = game.world().depth() * render::kPixelsPerTile;
-    const float halfScreenW = camera_.offset.x / camera_.zoom;
-    const float halfScreenH = camera_.offset.y / camera_.zoom;
-
-    // Follow the player, but stop scrolling at the map edges so the empty
-    // space beyond the map is not shown.
-    camera_.target.x = clampCameraAxis(playerPixels.x, halfScreenW, mapWidth - halfScreenW);
-    camera_.target.y = clampCameraAxis(playerPixels.y, halfScreenH, mapHeight - halfScreenH);
-}
-
 void Renderer::drawWorld(const game::World& world) const {
-    const float size = render::kPixelsPerTile;
+    const float groundBottom = -render::kGroundThickness;
 
-    for (int row = 0; row < world.depth(); ++row) {
-        for (int col = 0; col < world.width(); ++col) {
-            const Rectangle cell{col * size, row * size, size, size};
-            DrawRectangleRec(cell, colorFor(world.tileAt(col, row)));
-            DrawRectangleLinesEx(cell, 1.0f, render::kGridLineColor);
+    for (int z = 0; z < world.depth(); ++z) {
+        for (int x = 0; x < world.width(); ++x) {
+            const game::Tile tile = world.tileAt(x, z);
+            const Color fill = colorFor(tile);
+
+            switch (tile) {
+            case game::Tile::Grass:
+            case game::Tile::Path:
+                // Flat ground slab, top surface at y = 0.
+                drawTileBox(x, z, groundBottom, 0.0f, fill, render::kTileEdgeColor);
+                break;
+            case game::Tile::Water:
+                // Slab sunk a little below the ground, so the neighbouring
+                // ground tiles form a visible bank around the pool.
+                drawTileBox(x, z, groundBottom, -render::kWaterDepth, fill, render::kTileEdgeColor);
+                break;
+            case game::Tile::Wall:
+                // Box extruded up from below the ground to the wall height,
+                // plus a thin lighter cap. Without lighting every face would
+                // be the same color; the cap makes the wall tops stand out.
+                drawTileBox(x, z, groundBottom, render::kWallHeight, fill, render::kWallEdgeColor);
+                drawTileBox(x, z, render::kWallHeight, render::kWallHeight + 0.02f,
+                            render::kWallTopColor, render::kWallEdgeColor);
+                break;
+            }
         }
     }
 }
 
 void Renderer::drawPlayer(const game::Player& player) const {
-    const Vector2 centre = toPixels(player.position);
-    const float half = player.halfSize * render::kPixelsPerTile;
+    // A capsule standing on the ground. Its radius matches the collision
+    // footprint, so what you see is (roughly) what collides. The capsule's
+    // end spheres sit `radius` in from the top and bottom.
+    const float radius = player.halfSize;
+    const Vector3 feet = toRaylib(player.position);
+    const Vector3 bottom{feet.x, feet.y + radius, feet.z};
+    const Vector3 top{feet.x, feet.y + player.height - radius, feet.z};
+    DrawCapsule(bottom, top, radius, 12, 6, render::kPlayerColor);
 
-    // The drawn square matches the collision box exactly, so what you see
-    // is what collides.
-    const Rectangle body{centre.x - half, centre.y - half, half * 2.0f, half * 2.0f};
-    DrawRectangleRec(body, render::kPlayerColor);
-    DrawRectangleLinesEx(body, 2.0f, render::kPlayerOutline);
-
-    // A small dot on the side the player faces. facingYaw is measured from
-    // +Z towards +X, so sin gives the X part and cos the Z part.
-    const float reach = half * 0.6f;
-    const Vector2 marker{centre.x + std::sin(player.facingYaw) * reach,
-                         centre.y + std::cos(player.facingYaw) * reach};
-    DrawCircleV(marker, half * 0.25f, render::kFacingMarkerColor);
+    // A small "nose" at head height on the side the player faces.
+    // facingYaw is measured from +Z towards +X, so sin gives the X part
+    // and cos the Z part.
+    const Vector3 nose{feet.x + std::sin(player.facingYaw) * radius,
+                       feet.y + player.height * 0.8f,
+                       feet.z + std::cos(player.facingYaw) * radius};
+    DrawSphere(nose, radius * 0.3f, render::kPlayerNoseColor);
 }
 
 void Renderer::drawHud(const game::Game& game) const {
     const game::Vec3 pos = game.player().position;
-    DrawText("Move: WASD / arrow keys    Quit: Esc", 12, 12, 20, render::kHudTextColor);
-    DrawText(TextFormat("Tile: x %d, z %d", static_cast<int>(pos.x), static_cast<int>(pos.z)), 12, 38,
-             20, render::kHudTextColor);
+    DrawText("Move: WASD    Quit: Esc", 12, 12, 20, render::kHudTextColor);
+    DrawText(TextFormat("Tile: x %d, z %d", static_cast<int>(pos.x), static_cast<int>(pos.z)), 12,
+             38, 20, render::kHudTextColor);
     DrawFPS(render::kWindowWidth - 100, 12);
 }
 
