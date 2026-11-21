@@ -13,9 +13,10 @@ game::PlayerInput readPlayerInput() {
     const bool down = IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN);
 
     // bool converts to 0 or 1, so right - left gives -1, 0 or +1.
+    // Top-down view: screen right is +X and screen down is +Z.
     game::PlayerInput input;
-    input.moveX = static_cast<int>(right) - static_cast<int>(left);
-    input.moveY = static_cast<int>(down) - static_cast<int>(up); // +y is down the screen
+    input.moveX = static_cast<float>(static_cast<int>(right) - static_cast<int>(left));
+    input.moveZ = static_cast<float>(static_cast<int>(down) - static_cast<int>(up));
     return input;
 }
 

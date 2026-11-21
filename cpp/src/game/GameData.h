@@ -25,14 +25,21 @@ constexpr float kFixedTimeStep = 1.0f / 60.0f;
 // Walking speed in tiles per second.
 constexpr float kPlayerWalkSpeed = 5.0f;
 
-// Half the width/height of the player's square collision box, in tiles.
-// 0.35 makes the player a little smaller than one tile so it fits
-// through one-tile-wide gaps without snagging.
+// Half the width of the player's square footprint on the ground (X/Z), in
+// tiles. Collision uses this footprint only. 0.35 makes the player a little
+// smaller than one tile so it fits through one-tile-wide gaps without snagging.
 constexpr float kPlayerHalfSize = 0.35f;
+
+// How tall the player stands, in tiles (1 tile is roughly 1 metre). Used by
+// the renderer to size the body and by the camera to know where the head is;
+// collision does not use it yet because there is no vertical movement.
+constexpr float kPlayerHeight = 1.7f;
 
 // --- Starting world ----------------------------------------------------------
 
-// The starting map, one string per row, read top to bottom.
+// The starting map seen from above, one string per row, read top to bottom.
+// Each character is one tile: its column is the X coordinate and its row is
+// the Z coordinate, so the first row is the north edge (smallest Z).
 //   '#'  wall (blocks movement)
 //   '~'  water (blocks movement)
 //   '.'  grass (walkable)

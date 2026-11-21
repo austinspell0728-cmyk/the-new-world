@@ -9,28 +9,36 @@
 
 #pragma once
 
-#include "Vec2.h"
+#include "Vec3.h"
 #include "World.h"
 
 namespace game {
 
-// What the player is asking to do this step, already translated from
-// physical keys. Each axis is -1, 0 or +1 (x: left/right, y: up/down).
-// Keeping this separate from the keyboard lets us later drive the player
-// from a gamepad, an AI, a replay file or a test.
+// The direction the player wants to walk this step, in WORLD space on the
+// ground plane (+X east, +Z south; see Vec3.h).
+//
+// The game does not know about cameras or keys. The platform layer turns
+// "W pressed while the camera faces north-east" into a world direction
+// before it gets here, which keeps these rules testable with plain numbers
+// and lets a gamepad, an AI or a replay drive the player the same way.
+//
+// Any length is accepted: the direction is normalized, so the player always
+// walks at full speed, and (0, 0) means stand still.
 struct PlayerInput {
-    int moveX = 0;
-    int moveY = 0;
+    float moveX = 0.0f;
+    float moveZ = 0.0f;
 };
 
-// Which way the player is facing; the renderer uses it to draw a marker.
-enum class Facing { Up, Down, Left, Right };
-
 struct Player {
-    Vec2 position;   // Centre of the player, in world units (tiles).
-    float halfSize;  // Half the width of the square collision box.
+    Vec3 position;   // Centre of the player's feet, in tiles. y is height (0 = ground).
+    float halfSize;  // Half the width of the square footprint on the ground.
+    float height;    // How tall the player stands, in tiles.
     float speed;     // Tiles per second.
-    Facing facing = Facing::Down;
+
+    // Direction the player faces, as an angle on the ground plane in radians.
+    // 0 faces +Z (south), pi/2 faces +X (east); i.e. yaw = atan2(dirX, dirZ).
+    // Kept when the player stops, so they keep facing where they last walked.
+    float facingYaw = 0.0f;
     bool moving = false;
 };
 
@@ -45,12 +53,12 @@ public:
     const Player& player() const { return player_; }
 
 private:
-    // Moves the player along one axis, stopping at solid tiles.
+    // Moves the player along one ground axis, stopping at solid tiles.
     void moveAlongX(float distance);
-    void moveAlongY(float distance);
+    void moveAlongZ(float distance);
 
-    // True if a square box centred at `centre` overlaps any solid tile.
-    bool overlapsSolid(Vec2 centre, float halfSize) const;
+    // True if a square footprint centred at `centre` overlaps any solid tile.
+    bool overlapsSolid(Vec3 centre, float halfSize) const;
 
     World world_;
     Player player_;

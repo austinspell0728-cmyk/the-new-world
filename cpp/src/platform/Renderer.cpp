@@ -6,6 +6,7 @@
 #include "Renderer.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "RenderConfig.h"
 
@@ -25,9 +26,10 @@ Color colorFor(game::Tile tile) {
     return MAGENTA; // Bright "missing" color makes a forgotten tile type obvious.
 }
 
-// Converts a world-space point to pixel space (before the camera is applied).
-Vector2 toPixels(game::Vec2 world) {
-    return {world.x * render::kPixelsPerTile, world.y * render::kPixelsPerTile};
+// Converts a world-space ground point to pixel space for this top-down view
+// (before the camera is applied): X goes right, Z goes down the screen.
+Vector2 toPixels(game::Vec3 world) {
+    return {world.x * render::kPixelsPerTile, world.z * render::kPixelsPerTile};
 }
 
 // Keeps a camera centre between `low` and `high`. If the map is smaller
@@ -70,7 +72,7 @@ void Renderer::draw(const game::Game& game) {
 void Renderer::updateCamera(const game::Game& game) {
     const Vector2 playerPixels = toPixels(game.player().position);
     const float mapWidth = game.world().width() * render::kPixelsPerTile;
-    const float mapHeight = game.world().height() * render::kPixelsPerTile;
+    const float mapHeight = game.world().depth() * render::kPixelsPerTile;
     const float halfScreenW = camera_.offset.x / camera_.zoom;
     const float halfScreenH = camera_.offset.y / camera_.zoom;
 
@@ -83,7 +85,7 @@ void Renderer::updateCamera(const game::Game& game) {
 void Renderer::drawWorld(const game::World& world) const {
     const float size = render::kPixelsPerTile;
 
-    for (int row = 0; row < world.height(); ++row) {
+    for (int row = 0; row < world.depth(); ++row) {
         for (int col = 0; col < world.width(); ++col) {
             const Rectangle cell{col * size, row * size, size, size};
             DrawRectangleRec(cell, colorFor(world.tileAt(col, row)));
@@ -102,22 +104,18 @@ void Renderer::drawPlayer(const game::Player& player) const {
     DrawRectangleRec(body, render::kPlayerColor);
     DrawRectangleLinesEx(body, 2.0f, render::kPlayerOutline);
 
-    // A small dot on the side the player faces.
-    Vector2 marker = centre;
+    // A small dot on the side the player faces. facingYaw is measured from
+    // +Z towards +X, so sin gives the X part and cos the Z part.
     const float reach = half * 0.6f;
-    switch (player.facing) {
-    case game::Facing::Up: marker.y -= reach; break;
-    case game::Facing::Down: marker.y += reach; break;
-    case game::Facing::Left: marker.x -= reach; break;
-    case game::Facing::Right: marker.x += reach; break;
-    }
+    const Vector2 marker{centre.x + std::sin(player.facingYaw) * reach,
+                         centre.y + std::cos(player.facingYaw) * reach};
     DrawCircleV(marker, half * 0.25f, render::kFacingMarkerColor);
 }
 
 void Renderer::drawHud(const game::Game& game) const {
-    const game::Vec2 pos = game.player().position;
+    const game::Vec3 pos = game.player().position;
     DrawText("Move: WASD / arrow keys    Quit: Esc", 12, 12, 20, render::kHudTextColor);
-    DrawText(TextFormat("Tile: %d, %d", static_cast<int>(pos.x), static_cast<int>(pos.y)), 12, 38,
+    DrawText(TextFormat("Tile: x %d, z %d", static_cast<int>(pos.x), static_cast<int>(pos.z)), 12, 38,
              20, render::kHudTextColor);
     DrawFPS(render::kWindowWidth - 100, 12);
 }

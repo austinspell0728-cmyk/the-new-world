@@ -1,10 +1,11 @@
 // World.h
 //
-// The static layout of the game world: a rectangular grid of tiles.
+// The static layout of the game world: a rectangular grid of tiles lying on
+// the ground plane (X/Z, see Vec3.h).
 //
-// World answers questions like "what tile is at (x, y)?" and "can something
-// stand here?". It owns no graphics; the renderer reads it and decides how
-// each tile type looks.
+// World answers questions like "what tile is at this cell?" and "can
+// something stand here?". It owns no graphics; the renderer reads it and
+// decides how each tile type looks.
 
 #pragma once
 
@@ -13,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Vec2.h"
+#include "Vec3.h"
 
 namespace game {
 
@@ -41,23 +42,25 @@ public:
     }
     static World fromRows(const std::vector<std::string_view>& rows);
 
+    // Size of the map: width runs along X (columns), depth along Z (rows).
     int width() const { return width_; }
-    int height() const { return height_; }
+    int depth() const { return depth_; }
 
-    // Tile at grid cell (col, row). Cells outside the map count as Wall,
-    // so nothing can ever walk off the edge of the world.
-    Tile tileAt(int col, int row) const;
+    // Tile at grid cell (x, z), i.e. column x of row z in the text map.
+    // Cells outside the map count as Wall, so nothing can ever walk off the
+    // edge of the world.
+    Tile tileAt(int x, int z) const;
 
-    // Centre of the tile marked '@' in the map, in world units.
-    Vec2 playerStart() const { return playerStart_; }
+    // Centre of the tile marked '@', at ground height (y = 0), in tiles.
+    Vec3 playerStart() const { return playerStart_; }
 
 private:
-    World(int width, int height, std::vector<Tile> tiles, Vec2 playerStart);
+    World(int width, int depth, std::vector<Tile> tiles, Vec3 playerStart);
 
     int width_;
-    int height_;
-    std::vector<Tile> tiles_; // row-major: index = row * width_ + col
-    Vec2 playerStart_;
+    int depth_;
+    std::vector<Tile> tiles_; // row-major: index = z * width_ + x
+    Vec3 playerStart_;
 };
 
 } // namespace game
