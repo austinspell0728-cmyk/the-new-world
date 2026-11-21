@@ -2,11 +2,11 @@
 //
 // Entry point: opens the window and runs the main loop.
 //
-// Each frame does four things in order:
-//   1. Read input   (platform/InputReader)
-//   2. Update game  (game/Game, in fixed time steps)
-//   3. Aim camera   (platform/CameraRig)
-//   4. Draw         (platform/Renderer)
+// Each frame does these things in order:
+//   1. Turn camera   (platform/InputReader -> platform/CameraRig)
+//   2. Read movement (platform/InputReader, relative to the camera)
+//   3. Update game   (game/Game, in fixed time steps)
+//   4. Aim camera at the player and draw (platform/CameraRig, Renderer)
 //
 // Optional: `new-world --screenshot build/shot.png` runs a short moment,
 // saves one frame to that file and quits. Handy for checking the view
@@ -80,20 +80,26 @@ int main(int argc, char** argv) {
         }
         accumulator += frameTime;
 
-        // Input is sampled once per frame and reused for every step in it.
-        const game::PlayerInput input = platform::readPlayerInput();
+        // 1. Turn the camera first, so movement below uses this frame's view.
+        //    The camera is presentation, so it turns once per frame using real
+        //    frame time rather than in fixed game steps.
+        if (interactive) {
+            const platform::CameraInput look = platform::readCameraInput(frameTime);
+            cameraRig.orbit(look.yawDelta, look.pitchDelta);
+        }
 
+        // 2. WASD relative to the camera, turned into a world direction here
+        //    in the platform layer. Sampled once per frame and reused for
+        //    every game step in it.
+        const game::PlayerInput input = platform::readPlayerInput(cameraRig.yaw());
+
+        // 3. Advance the game in fixed steps.
         while (accumulator >= dt) {
             game.step(input, dt);
             accumulator -= dt;
         }
 
-        // The camera is presentation, so it turns once per frame using real
-        // frame time rather than in fixed game steps.
-        if (interactive) {
-            const platform::CameraInput look = platform::readCameraInput(frameTime);
-            cameraRig.orbit(look.yawDelta, look.pitchDelta);
-        }
+        // 4. Aim the camera at the player's new position, then draw.
         cameraRig.follow(game.player().position);
         renderer.draw(game, cameraRig);
 

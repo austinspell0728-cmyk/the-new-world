@@ -4,6 +4,7 @@
 
 #include "raylib.h"
 
+#include "CameraRelativeMove.h"
 #include "RenderConfig.h"
 
 namespace platform {
@@ -18,12 +19,10 @@ float axis(int negativeKey, int positiveKey) {
 
 } // namespace
 
-game::PlayerInput readPlayerInput() {
-    // For now the view is fixed, so screen right is +X and screen down is +Z.
-    game::PlayerInput input;
-    input.moveX = axis(KEY_A, KEY_D);
-    input.moveZ = axis(KEY_W, KEY_S);
-    return input;
+game::PlayerInput readPlayerInput(float cameraYaw) {
+    // The keys say "forward/right" from the camera's point of view;
+    // cameraRelativeMove turns that into a direction in the world.
+    return cameraRelativeMove(axis(KEY_S, KEY_W), axis(KEY_A, KEY_D), cameraYaw);
 }
 
 CameraInput readCameraInput(float frameTime) {

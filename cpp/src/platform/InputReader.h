@@ -10,10 +10,11 @@
 
 namespace platform {
 
-// Reads the movement keys right now and returns the requested movement.
-// WASD only: the arrow keys now orbit the camera. Pressing opposite keys
-// together (e.g. A + D) cancels out to 0 on that axis.
-game::PlayerInput readPlayerInput();
+// Reads WASD right now and returns the requested movement as a world
+// direction, relative to the camera: W walks away from the camera, D walks
+// to its right, and so on. `cameraYaw` is CameraRig::yaw().
+// Pressing opposite keys together (e.g. A + D) cancels out on that axis.
+game::PlayerInput readPlayerInput(float cameraYaw);
 
 // How much the player wants to turn the camera this frame, in radians.
 //   yawDelta    positive turns the view left, negative turns it right

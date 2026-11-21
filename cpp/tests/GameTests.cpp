@@ -18,6 +18,8 @@
 #include "../src/game/Game.h"
 #include "../src/game/GameData.h"
 #include "../src/game/World.h"
+// Raylib-free platform helper; safe to include in the test build.
+#include "../src/platform/CameraRelativeMove.h"
 
 namespace {
 
@@ -240,6 +242,58 @@ int main() {
         hold(g, {inf, inf}, 5);
         check(near(g.player().position.x, before.x) && near(g.player().position.z, before.z),
               "player should not move or become NaN");
+    });
+
+    // --- Camera-relative movement (platform/CameraRelativeMove.h) ---------------
+
+    run("Default camera: W walks north (-Z) and D walks east (+X)", [] {
+        const float yaw = kPi; // camera starts facing -Z
+        const game::PlayerInput w = platform::cameraRelativeMove(1, 0, yaw);
+        const game::PlayerInput d = platform::cameraRelativeMove(0, 1, yaw);
+        check(near(w.moveX, 0.0f) && near(w.moveZ, -1.0f), "W should be (0, -1)");
+        check(near(d.moveX, 1.0f) && near(d.moveZ, 0.0f), "D should be (1, 0)");
+    });
+
+    run("Camera facing east: W walks +X and D walks +Z", [] {
+        const float yaw = kPi / 2.0f;
+        const game::PlayerInput w = platform::cameraRelativeMove(1, 0, yaw);
+        const game::PlayerInput d = platform::cameraRelativeMove(0, 1, yaw);
+        check(near(w.moveX, 1.0f) && near(w.moveZ, 0.0f), "W should be (1, 0)");
+        check(near(d.moveX, 0.0f) && near(d.moveZ, 1.0f), "D should be (0, 1)");
+    });
+
+    run("S and A are the exact opposites of W and D at any angle", [] {
+        const float yaw = 0.7f;
+        const game::PlayerInput w = platform::cameraRelativeMove(1, 0, yaw);
+        const game::PlayerInput s = platform::cameraRelativeMove(-1, 0, yaw);
+        const game::PlayerInput d = platform::cameraRelativeMove(0, 1, yaw);
+        const game::PlayerInput a = platform::cameraRelativeMove(0, -1, yaw);
+        check(near(w.moveX, -s.moveX) && near(w.moveZ, -s.moveZ), "S should mirror W");
+        check(near(d.moveX, -a.moveX) && near(d.moveZ, -a.moveZ), "A should mirror D");
+        check(near(w.moveX * d.moveX + w.moveZ * d.moveZ, 0.0f), "forward and right are perpendicular");
+    });
+
+    run("W + D with a rotated camera is no faster than W alone", [] {
+        const float yaw = 0.7f;
+        game::Game straight(smallRoom());
+        game::Game diagonal(smallRoom());
+        const game::Vec3 start = straight.player().position;
+        hold(straight, platform::cameraRelativeMove(1, 0, yaw), 3);
+        hold(diagonal, platform::cameraRelativeMove(1, 1, yaw), 3);
+        check(near(game::lengthXZ(straight.player().position - start),
+                   game::lengthXZ(diagonal.player().position - start), 0.001f),
+              "distances should match");
+    });
+
+    run("Walking into a wall with a rotated camera slides along it", [] {
+        game::Game g(smallRoom());
+        hold(g, {1, 0}, 120); // pin against the +X wall
+        const float pinnedX = g.player().position.x;
+        const float startZ = g.player().position.z;
+        // Camera turned 30 degrees off east: W pushes into the wall at an angle.
+        hold(g, platform::cameraRelativeMove(1, 0, kPi / 2.0f + kPi / 6.0f), 6);
+        check(near(g.player().position.x, pinnedX), "x should stay pinned to the wall");
+        check(std::abs(g.player().position.z - startZ) > 0.1f, "player should slide along z");
     });
 
     if (failures > 0) {
