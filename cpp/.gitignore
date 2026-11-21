@@ -1,0 +1,15 @@
+# Build output (objects, dependency files, executables)
+/build/
+
+# Compiled binaries anywhere in this folder
+*.o
+*.d
+*.exe
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+
+# Never commit raylib itself; it is installed locally (see Makefile)
+raylib/
