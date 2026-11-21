@@ -45,6 +45,11 @@ constexpr float kCameraMaxPitchDeg = 75.0f;
 // map appears the same way round as the text map in GameData.h.
 constexpr float kCameraStartYawDeg = 180.0f;
 
+// Orbit speed: radians turned per pixel of mouse movement, and degrees per
+// second while Q/E or an arrow key is held.
+constexpr float kMouseSensitivity = 0.004f;
+constexpr float kCameraKeyTurnDegPerSec = 120.0f;
+
 // --- World shapes ------------------------------------------------------------
 
 // Ground tiles are slabs whose top surface is at y = 0.

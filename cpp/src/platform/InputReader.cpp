@@ -4,19 +4,41 @@
 
 #include "raylib.h"
 
+#include "RenderConfig.h"
+
 namespace platform {
 
-game::PlayerInput readPlayerInput() {
-    const bool left = IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT);
-    const bool right = IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT);
-    const bool up = IsKeyDown(KEY_W) || IsKeyDown(KEY_UP);
-    const bool down = IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN);
+namespace {
 
-    // bool converts to 0 or 1, so right - left gives -1, 0 or +1.
-    // Top-down view: screen right is +X and screen down is +Z.
+// +1 if `positive` is held, -1 if `negative` is held, 0 for neither or both.
+float axis(int negativeKey, int positiveKey) {
+    return static_cast<float>(static_cast<int>(IsKeyDown(positiveKey)) -
+                              static_cast<int>(IsKeyDown(negativeKey)));
+}
+
+} // namespace
+
+game::PlayerInput readPlayerInput() {
+    // For now the view is fixed, so screen right is +X and screen down is +Z.
     game::PlayerInput input;
-    input.moveX = static_cast<float>(static_cast<int>(right) - static_cast<int>(left));
-    input.moveZ = static_cast<float>(static_cast<int>(down) - static_cast<int>(up));
+    input.moveX = axis(KEY_A, KEY_D);
+    input.moveZ = axis(KEY_W, KEY_S);
+    return input;
+}
+
+CameraInput readCameraInput(float frameTime) {
+    const float keyTurn = render::kCameraKeyTurnDegPerSec * DEG2RAD * frameTime;
+    const Vector2 mouse = GetMouseDelta(); // pixels moved since last frame
+
+    CameraInput input;
+
+    // Mouse right / E / Right arrow turn the view right (negative yaw).
+    input.yawDelta = -mouse.x * render::kMouseSensitivity +
+                     axis(KEY_E, KEY_Q) * keyTurn + axis(KEY_RIGHT, KEY_LEFT) * keyTurn;
+
+    // Mouse down / Down arrow tilt the view further down (positive pitch).
+    input.pitchDelta = mouse.y * render::kMouseSensitivity + axis(KEY_UP, KEY_DOWN) * keyTurn;
+
     return input;
 }
 

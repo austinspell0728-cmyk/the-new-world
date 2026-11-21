@@ -49,6 +49,15 @@ int main(int argc, char** argv) {
                platform::render::kWindowTitle);
     SetTargetFPS(platform::render::kTargetFps);
 
+    // Hide and lock the mouse to the window so moving it orbits the camera
+    // without the pointer leaving the screen. Esc still quits.
+    // Screenshot mode skips this and ignores camera input, so the saved
+    // image always shows the default view.
+    const bool interactive = (screenshotPath == nullptr);
+    if (interactive) {
+        DisableCursor();
+    }
+
     platform::CameraRig cameraRig;
     const platform::Renderer renderer;
 
@@ -79,6 +88,12 @@ int main(int argc, char** argv) {
             accumulator -= dt;
         }
 
+        // The camera is presentation, so it turns once per frame using real
+        // frame time rather than in fixed game steps.
+        if (interactive) {
+            const platform::CameraInput look = platform::readCameraInput(frameTime);
+            cameraRig.orbit(look.yawDelta, look.pitchDelta);
+        }
         cameraRig.follow(game.player().position);
         renderer.draw(game, cameraRig);
 

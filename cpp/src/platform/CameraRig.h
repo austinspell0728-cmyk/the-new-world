@@ -22,6 +22,12 @@ class CameraRig {
 public:
     CameraRig();
 
+    // Turns the camera around the player by the given angles (radians).
+    // Pitch is clamped to RenderConfig's limits so the camera can never go
+    // under the ground or flip over the top. There is no camera collision
+    // yet, so it can pass through walls.
+    void orbit(float yawDelta, float pitchDelta);
+
     // Moves the camera so it looks at `playerFeet` from the current angles.
     // Call once per frame after the game has updated.
     void follow(game::Vec3 playerFeet);

@@ -5,6 +5,7 @@
 
 #include "CameraRig.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "RenderConfig.h"
@@ -16,6 +17,15 @@ CameraRig::CameraRig()
     camera_.up = {0.0f, 1.0f, 0.0f}; // Y is up
     camera_.fovy = render::kCameraFovY;
     camera_.projection = CAMERA_PERSPECTIVE;
+}
+
+void CameraRig::orbit(float yawDelta, float pitchDelta) {
+    // Keep yaw in -pi..pi so it never grows without limit over a long
+    // session (which would slowly lose floating point precision).
+    yaw_ = std::remainder(yaw_ + yawDelta, 2.0f * PI);
+
+    pitch_ = std::clamp(pitch_ + pitchDelta, render::kCameraMinPitchDeg * DEG2RAD,
+                        render::kCameraMaxPitchDeg * DEG2RAD);
 }
 
 void CameraRig::follow(game::Vec3 playerFeet) {
