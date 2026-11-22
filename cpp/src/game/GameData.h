@@ -46,6 +46,52 @@ constexpr float kNpcHeight = 1.7f;
 // talk to an NPC with E. Walking further than this away closes the dialogue.
 constexpr float kTalkRange = 1.6f;
 
+// --- Camera occlusion (see CameraOcclusion.h) -----------------------------------
+//
+// How tall things in the town are, for keeping the camera out of them. In
+// tiles (1 tile = 1 m). Rounded UP from the drawn models on purpose: it is
+// better to pull the camera in a little early than to let it into a roof.
+
+// Building tiles block from the ground up to the top of the tallest roof
+// ridge (the kit's 6-wide roofs reach about 7.9 m).
+constexpr float kOccluderBuildingTop = 8.0f;
+// Roofs overhang their walls by about a tile. In the tiles around a
+// building (sides and corners), the eaves block between these heights.
+constexpr float kOccluderEavesBottom = 2.0f;
+constexpr float kOccluderEavesTop = 3.6f;
+// Tree tiles block from the ground to the top of the crown (trees are up
+// to about 7.5 m). Crowns spread about a tile further: in the tiles around a
+// tree they block between these heights. The bottom is kept above head
+// height so the camera can still sit behind a player standing under a crown.
+constexpr float kOccluderTreeTop = 7.5f;
+constexpr float kOccluderCrownBottom = 2.2f;
+// Low things that block from the ground up: market stalls, the well and the
+// stone border wall.
+constexpr float kOccluderStallTop = 1.9f;
+constexpr float kOccluderWellTop = 1.8f;
+constexpr float kOccluderWallTop = 2.0f;
+
+// The camera keeps this much room (in tiles, around its position) from
+// anything that blocks, so the near edge of the view does not cut into a
+// wall or leaves.
+constexpr float kCameraClearance = 0.4f;
+// It never comes closer to the point it looks at than this, unless that
+// would put it inside something.
+constexpr float kCameraMinDistance = 1.0f;
+// And never closer than this, even if that point is inside something: a
+// camera sitting on the point it looks at cannot draw anything (the view
+// direction is undefined). 0.3 is inside the player's own half-width
+// (0.35), so with the player pressed against a wall it still stays out of
+// the wall.
+constexpr float kCameraNearestDistance = 0.3f;
+// How finely the line from the player to the camera is checked, in tiles.
+constexpr float kCameraSampleStep = 0.05f;
+// How long a full pull-in (from the normal distance to the minimum) and a
+// full release take, in seconds. The camera distance changes at a steady
+// rate, so it never jumps.
+constexpr float kCameraPullInSeconds = 0.10f;
+constexpr float kCameraReleaseSeconds = 0.15f;
+
 // --- Starting world ----------------------------------------------------------
 //
 // The world is built in two layers (see WorldBuilder.h):

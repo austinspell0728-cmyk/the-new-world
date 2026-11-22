@@ -17,6 +17,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../src/game/CameraOcclusion.h"
 #include "../src/game/Game.h"
 #include "../src/game/GameData.h"
 #include "../src/game/NpcData.h"
@@ -160,6 +161,46 @@ bool treeTextFails(const std::string& text, const std::string& expected) {
 std::string treeBlock(const std::string& name, int weight = 1) {
     return "[tree]\nname = " + name + "\nmodel = " + name + ".gltf\nscale = 0.7\ntrunk = 0, 0\nweight = " +
            std::to_string(weight) + "\n";
+}
+
+// A 32x32 grass field with a border wall, the start at (15, 15), and the
+// given extra tiles stamped on: {x, z, char}.
+struct Stamp {
+    int x;
+    int z;
+    char tile;
+};
+game::World fieldWith(const std::vector<Stamp>& stamps) {
+    std::vector<std::string> rows(32, std::string(32, '.'));
+    for (int i = 0; i < 32; ++i) {
+        rows[0][static_cast<std::size_t>(i)] = rows[31][static_cast<std::size_t>(i)] = '#';
+        rows[static_cast<std::size_t>(i)][0] = rows[static_cast<std::size_t>(i)][31] = '#';
+    }
+    rows[15][15] = '@';
+    for (const Stamp& s : stamps) {
+        rows[static_cast<std::size_t>(s.z)][static_cast<std::size_t>(s.x)] = s.tile;
+    }
+    return game::World::fromRows(rows);
+}
+
+// The camera the game would like: 7 tiles from `lookAt`, facing `yawDeg`
+// (0 = camera looks south, so it stands north), looking down `pitchDeg`.
+game::Vec3 orbitCamera(game::Vec3 lookAt, float yawDeg, float pitchDeg, float distance = 7.0f) {
+    const float yaw = yawDeg * 3.14159265f / 180.0f, pitch = pitchDeg * 3.14159265f / 180.0f;
+    const float behind = distance * std::cos(pitch), above = distance * std::sin(pitch);
+    return {lookAt.x - std::sin(yaw) * behind, lookAt.y + above, lookAt.z - std::cos(yaw) * behind};
+}
+
+float distanceBetween(game::Vec3 a, game::Vec3 b) {
+    const game::Vec3 d = a - b;
+    return std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+}
+
+bool isFinite(game::Vec3 v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); }
+
+// True if `p` lies on the segment from `a` to `b`.
+bool onSegment(game::Vec3 p, game::Vec3 a, game::Vec3 b) {
+    return near(distanceBetween(a, p) + distanceBetween(p, b), distanceBetween(a, b), 0.001f);
 }
 
 } // namespace
@@ -1253,6 +1294,174 @@ int main() {
         check(treeTiles == 20 && static_cast<int>(trees.size()) == treeTiles, "20 tree tiles, 20 trees");
         check(onTreeTiles, "each tree on its own tree tile");
         check(platform::placeTrees(world, parseTreeText("")).empty(), "no variants: no model trees (box trees stay)");
+    });
+
+    // --- Camera occlusion (game/CameraOcclusion.h) -----------------------------
+    // The player's head (look point) at (15.5, 1.3, 15.5); the camera wanted
+    // south of it (yaw 180), 7 tiles away, 35 degrees down: about 5.7 tiles
+    // south and 4 tiles up.
+
+    const game::Vec3 head{15.5f, 1.3f, 15.5f};
+    const game::Vec3 southCamera = orbitCamera(head, 180.0f, 35.0f);
+
+    run("Camera: open ground leaves the camera where it is", [&] {
+        const game::World world = fieldWith({});
+        const game::Vec3 result = game::unblockedCameraPosition(world, head, southCamera);
+        check(near(result.x, southCamera.x) && near(result.y, southCamera.y) && near(result.z, southCamera.z),
+              "unchanged");
+    });
+
+    run("Camera: a building between player and camera pulls it in", [&] {
+        // A row of building tiles 2.5 tiles south of the player.
+        std::vector<Stamp> row;
+        for (int x = 10; x <= 21; ++x) {
+            row.push_back({x, 18, 'B'});
+        }
+        const game::World world = fieldWith(row);
+        const game::Vec3 result = game::unblockedCameraPosition(world, head, southCamera);
+        const float distance = distanceBetween(head, result);
+        check(distance < 2.0f, "pulled in to before the building (and its eaves)");
+        check(distance >= game::data::kCameraMinDistance - 0.001f, "not closer than the minimum");
+        check(onSegment(result, head, southCamera), "stays on the line from the player");
+        check(!game::cameraBlockedAt(world, result) && result.z < 18.0f, "in front of the building");
+    });
+
+    run("Camera: a line passing over a low wall is not blocked", [&] {
+        // The stone wall is 2 m tall; the line is already about 3 m up there.
+        std::vector<Stamp> row;
+        for (int x = 10; x <= 21; ++x) {
+            row.push_back({x, 18, '#'});
+        }
+        const game::Vec3 result = game::unblockedCameraPosition(fieldWith(row), head, southCamera);
+        check(near(distanceBetween(head, result), 7.0f), "camera keeps its full distance");
+    });
+
+    run("Camera: a tree crown pulls it in, but not a tree the line passes above", [&] {
+        // A tree just beside the line: its trunk tile is not on the line, but its crown is.
+        const game::World beside = fieldWith({{16, 17, 'T'}});
+        const game::Vec3 pulled = game::unblockedCameraPosition(beside, head, southCamera);
+        check(distanceBetween(head, pulled) < 3.0f, "pulled in before the crown");
+        check(!game::cameraBlockedAt(beside, pulled), "not inside the crown");
+
+        // A tree under the far end of a steep line. Its crown counts over the
+        // tiles z 7-9 up to 7.5 m; the line is above 8.6 m from z 10 on.
+        const game::World under = fieldWith({{15, 8, 'T'}});
+        const game::Vec3 high = {15.5f, 9.3f, 9.5f}; // 6 tiles north, 8 m higher than the head
+        const game::Vec3 kept = game::unblockedCameraPosition(under, head, high);
+        check(near(kept.x, high.x) && near(kept.y, high.y) && near(kept.z, high.z), "line above the tree: unchanged");
+    });
+
+    run("Camera: the minimum distance is kept when only the clearance is tight", [&] {
+        // A building wall running alongside the line, 0.3 tiles to its side:
+        // too close for the camera's 0.4 clearance anywhere along it.
+        std::vector<Stamp> column;
+        for (int z = 14; z <= 24; ++z) {
+            column.push_back({16, z, 'B'});
+        }
+        const game::World world = fieldWith(column);
+        const game::Vec3 beside{15.7f, 1.3f, 15.5f};
+        const game::Vec3 result = game::unblockedCameraPosition(world, beside, orbitCamera(beside, 180.0f, 35.0f));
+        check(near(distanceBetween(beside, result), game::data::kCameraMinDistance, 0.001f),
+              "exactly the minimum distance");
+        check(!game::cameraBlockedAt(world, result), "and not inside anything");
+    });
+
+    run("Camera: pressed against a wall, the result is finite and not inside", [&] {
+        // Player touching a building on its east side; the camera wanted inside the building.
+        std::vector<Stamp> column;
+        for (int z = 10; z <= 20; ++z) {
+            column.push_back({17, z, 'B'});
+        }
+        const game::World world = fieldWith(column);
+        const game::Vec3 againstWall{16.65f, 1.3f, 15.5f};
+        const game::Vec3 into = orbitCamera(againstWall, 270.0f, 20.0f); // camera east of the player
+        const game::Vec3 result = game::unblockedCameraPosition(world, againstWall, into);
+        check(isFinite(result) && !game::cameraBlockedAt(world, result), "finite, not inside the building");
+        check(distanceBetween(againstWall, result) >= game::data::kCameraNearestDistance - 0.001f,
+              "not on top of the look point (the view would collapse)");
+        check(isFinite(game::unblockedCameraPosition(world, againstWall, againstWall)), "camera on the look point");
+        game::CameraOcclusion smooth;
+        bool allFinite = true;
+        for (int i = 0; i < 20; ++i) {
+            allFinite = allFinite && isFinite(smooth.update(world, againstWall, into, 1.0f / 60.0f));
+        }
+        allFinite = allFinite && isFinite(smooth.update(world, againstWall, into, 0.0f));
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        allFinite = allFinite && isFinite(game::unblockedCameraPosition(world, againstWall, {nan, 1.0f, 1.0f}));
+        check(allFinite, "smoothed too, and with a zero frame time or a NaN input");
+    });
+
+    run("Camera: a look point inside a tree still gives a usable camera", [&] {
+        // Only possible with --screenshot aimed at a tree tile, but the view
+        // must not collapse.
+        const game::World world = fieldWith({{15, 15, 'T'}, {3, 3, '@'}});
+        const game::Vec3 result = game::unblockedCameraPosition(world, head, southCamera);
+        check(isFinite(result) && near(distanceBetween(head, result), game::data::kCameraNearestDistance, 0.001f),
+              "kept at the nearest distance");
+    });
+
+    run("Camera: in the real town it never ends inside anything", [] {
+        const game::World world = game::buildStartingWorld(game::data::kWorldSeed);
+        int inside = 0, checked = 0;
+        for (int z = 1; z < world.depth() - 1; ++z) {
+            for (int x = 1; x < world.width() - 1; ++x) {
+                if (game::isSolid(world.tileAt(x, z))) {
+                    continue; // the player can't stand here
+                }
+                const game::Vec3 lookAt{x + 0.5f, 1.3f, z + 0.5f};
+                for (float yaw = 0.0f; yaw < 360.0f; yaw += 30.0f) {
+                    for (const float pitch : {5.0f, 35.0f, 75.0f}) {
+                        const game::Vec3 result =
+                            game::unblockedCameraPosition(world, lookAt, orbitCamera(lookAt, yaw, pitch));
+                        ++checked;
+                        inside += (!isFinite(result) || game::cameraBlockedAt(world, result)) ? 1 : 0;
+                    }
+                }
+            }
+        }
+        check(checked > 20000 && inside == 0, "every walkable tile, 12 turns, 3 pitches: never inside");
+    });
+
+    run("Camera: smoothing moves at most a small step per frame, both ways", [&] {
+        std::vector<Stamp> row;
+        for (int x = 10; x <= 21; ++x) {
+            row.push_back({x, 18, 'B'});
+        }
+        const game::World open = fieldWith({}), blocked = fieldWith(row);
+        const float dt = 1.0f / 60.0f;
+        // Steady rate: (7 - 1) tiles in 0.10 s going in = 1.0 tile per frame;
+        // in 0.15 s going out = 0.67 per frame.
+        const float maxIn = 6.0f / game::data::kCameraPullInSeconds * dt + 0.001f;
+        const float maxOut = 6.0f / game::data::kCameraReleaseSeconds * dt + 0.001f;
+
+        game::CameraOcclusion camera;
+        camera.update(open, head, southCamera, dt);
+        check(near(camera.distance(), 7.0f), "starts at the full distance");
+
+        // A building appears in the way (as when walking past a corner).
+        const float allowed = distanceBetween(head, game::unblockedCameraPosition(blocked, head, southCamera));
+        float previous = camera.distance(), biggestStep = 0.0f;
+        int framesIn = 0;
+        while (!near(camera.distance(), allowed, 0.001f) && framesIn < 100) {
+            camera.update(blocked, head, southCamera, dt);
+            biggestStep = std::max(biggestStep, std::abs(camera.distance() - previous));
+            previous = camera.distance();
+            ++framesIn;
+        }
+        check(biggestStep <= maxIn, "pull-in: at most 1 tile per frame at 60 FPS");
+        check(framesIn >= 3 && framesIn <= 7, "pull-in takes a few frames (about 0.1 s), not one jump");
+
+        // And it goes away again.
+        biggestStep = 0.0f;
+        int framesOut = 0;
+        while (!near(camera.distance(), 7.0f, 0.001f) && framesOut < 100) {
+            camera.update(open, head, southCamera, dt);
+            biggestStep = std::max(biggestStep, std::abs(camera.distance() - previous));
+            previous = camera.distance();
+            ++framesOut;
+        }
+        check(biggestStep <= maxOut, "release: at most 0.67 tiles per frame at 60 FPS");
+        check(framesOut >= 6 && framesOut <= 10, "release takes about 0.15 s");
     });
 
     if (failures > 0) {
