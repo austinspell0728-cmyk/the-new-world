@@ -39,13 +39,18 @@ endif
 
 # Game rules and data: plain C++, no raylib.
 GAME_SRC     := $(wildcard src/game/*.cpp)
+# Platform helpers written without raylib, so the tests can use them too.
+# They are compiled WITHOUT the raylib include path, so a raylib include
+# slipping into one of them breaks the build straight away.
+PURE_PLATFORM_SRC := src/platform/BuildingData.cpp
 # Window, input and drawing: uses raylib.
-PLATFORM_SRC := $(wildcard src/platform/*.cpp) src/main.cpp
+PLATFORM_SRC := $(filter-out $(PURE_PLATFORM_SRC),$(wildcard src/platform/*.cpp)) src/main.cpp
 TEST_SRC     := tests/GameTests.cpp
 
-GAME_OBJ     := $(GAME_SRC:%.cpp=$(BUILD)/%.o)
-PLATFORM_OBJ := $(PLATFORM_SRC:%.cpp=$(BUILD)/%.o)
-TEST_OBJ     := $(TEST_SRC:%.cpp=$(BUILD)/%.o)
+GAME_OBJ          := $(GAME_SRC:%.cpp=$(BUILD)/%.o)
+PURE_PLATFORM_OBJ := $(PURE_PLATFORM_SRC:%.cpp=$(BUILD)/%.o)
+PLATFORM_OBJ      := $(PLATFORM_SRC:%.cpp=$(BUILD)/%.o)
+TEST_OBJ          := $(TEST_SRC:%.cpp=$(BUILD)/%.o)
 
 GAME_BIN := $(BUILD)/new-world$(EXE)
 TEST_BIN := $(BUILD)/game-tests$(EXE)
@@ -60,12 +65,13 @@ DEPFLAGS := -MMD -MP
 
 all: $(GAME_BIN)
 
-$(GAME_BIN): $(GAME_OBJ) $(PLATFORM_OBJ)
+$(GAME_BIN): $(GAME_OBJ) $(PURE_PLATFORM_OBJ) $(PLATFORM_OBJ)
 	$(CXX) $^ -o $@ -L$(RAYLIB_PATH) $(RAYLIB_LIBS)
 
-# The tests link only the game objects. If anything in src/game/ ever
-# includes raylib, this target stops building, which keeps the layers apart.
-$(TEST_BIN): $(GAME_OBJ) $(TEST_OBJ)
+# The tests link only the game objects and the raylib-free platform
+# helpers. If anything in them ever includes raylib, this target stops
+# building, which keeps the layers apart.
+$(TEST_BIN): $(GAME_OBJ) $(PURE_PLATFORM_OBJ) $(TEST_OBJ)
 	$(CXX) $^ -o $@
 
 # Game and test objects are compiled WITHOUT the raylib include path.
@@ -76,6 +82,11 @@ $(BUILD)/src/game/%.o: src/game/%.cpp
 	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
 $(BUILD)/tests/%.o: tests/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
+
+# (A static pattern rule: it applies only to the listed objects.)
+$(PURE_PLATFORM_OBJ): $(BUILD)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
@@ -93,4 +104,4 @@ test: $(TEST_BIN)
 clean:
 	rm -rf $(BUILD)
 
--include $(GAME_OBJ:.o=.d) $(PLATFORM_OBJ:.o=.d) $(TEST_OBJ:.o=.d)
+-include $(GAME_OBJ:.o=.d) $(PURE_PLATFORM_OBJ:.o=.d) $(PLATFORM_OBJ:.o=.d) $(TEST_OBJ:.o=.d)

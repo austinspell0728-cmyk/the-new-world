@@ -1,0 +1,46 @@
+# How the town's buildings are drawn. Loaded when the game starts; edit and
+# re-run, no rebuild needed. This only changes the LOOK: every building
+# keeps its footprint and collision from the town map in GameData.h.
+#
+# A building listed here is assembled from Medieval Village MegaKit pieces
+# (files in assets/medieval/). A building NOT listed, or one whose pieces
+# fail to load, is drawn as the old flat-colored box.
+#
+# [style] blocks: the pieces a kind of house is made of.
+#   name       what [building] blocks call it
+#   wall       plain 2 m wall panel
+#   window     2 m wall panel with a window
+#   door       2 m wall panel with a doorway
+#   door_leaf  the door that fills the doorway
+#   corner     the post standing on each outside corner
+#   roof       the roof model
+#   roof_fits  the footprint (x, z in tiles) the roof model was made for;
+#              it is stretched to fit the real building
+#   scale      optional height scale for the whole house (default 1.0)
+#
+# [building] blocks: one per building in the town.
+#   tile    any WORLD tile the building covers (town layout column/row + 2)
+#   style   a [style] name
+#   facing  the side the door is on: 0 = south, 90 = east, 180 = north,
+#           270 = west. The door goes where a path meets that side. If it
+#           looks wrong, change this number.
+#   offset  optional nudge in tiles: x, y, z (y raises or sinks it)
+#
+# Comments must be on their own line.
+
+[style]
+name      = plaster
+wall      = Wall_Plaster_Straight.gltf
+window    = Wall_Plaster_Window_Wide_Round.gltf
+door      = Wall_Plaster_Door_Round.gltf
+door_leaf = Door_1_Round.gltf
+corner    = Corner_Exterior_Wood.gltf
+roof      = Roof_RoundTiles_6x8.gltf
+roof_fits = 6, 8
+
+# The biggest building (8 x 6 tiles), east of the main road. Its path
+# comes in from the north.
+[building]
+tile   = 29, 24
+style  = plaster
+facing = 180

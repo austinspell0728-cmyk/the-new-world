@@ -21,7 +21,8 @@
 #include "../src/game/NpcData.h"
 #include "../src/game/World.h"
 #include "../src/game/WorldBuilder.h"
-// Raylib-free platform helper; safe to include in the test build.
+// Raylib-free platform helpers; safe to include in the test build.
+#include "../src/platform/BuildingData.h"
 #include "../src/platform/CameraRelativeMove.h"
 
 namespace {
@@ -90,6 +91,32 @@ game::Npc npcAt(const std::string& name, int x, int z) {
 }
 
 constexpr float kPi = 3.14159265358979f;
+
+// Parses building text the same way the game parses data/buildings.txt.
+platform::BuildingData parseBuildingText(const std::string& text) {
+    std::istringstream in(text);
+    return platform::parseBuildings(in, "test");
+}
+
+// True if parsing `text` fails with an error message containing `expected`.
+bool buildingTextFails(const std::string& text, const std::string& expected) {
+    try {
+        parseBuildingText(text);
+    } catch (const std::runtime_error& error) {
+        if (std::string(error.what()).find(expected) != std::string::npos) {
+            return true;
+        }
+        std::cerr << "  (got: " << error.what() << ")\n";
+    }
+    return false;
+}
+
+// A complete [style] block named `name`: 10 lines, starting with "[style]".
+std::string styleBlock(const std::string& name) {
+    return "[style]\nname = " + name +
+           "\nwall = w.gltf\nwindow = win.gltf\ndoor = d.gltf\ndoor_leaf = leaf.gltf\n"
+           "corner = c.gltf\nroof = r.gltf\nroof_fits = 6, 8\n\n";
+}
 
 } // namespace
 
@@ -578,6 +605,127 @@ int main() {
         g.interact();
         check(g.activeDialogue() != nullptr && g.activeDialogue()->name == "Left",
               "Left (1.0 away) is nearer than Up (1.41 away)");
+    });
+
+    // --- Building data file (data/buildings.txt) -----------------------------
+
+    run("Building text reads styles and buildings", [] {
+        const platform::BuildingData data = parseBuildingText(
+            "# a comment\n" + styleBlock("plaster") +
+            "[style]\nname = tall\nwall = w2.gltf\nwindow = win2.gltf\ndoor = d2.gltf\n"
+            "door_leaf = leaf2.gltf\ncorner = c2.gltf\nroof = r2.gltf\nroof_fits = 4, 4\nscale = 1.5\n"
+            "[building]\ntile = 29, 24\nstyle = plaster\nfacing = 180\n"
+            "[building]\ntile = 3, 4\nstyle = tall\nfacing = 90\noffset = 0.5, -0.1, 0\n");
+        check(data.source == "test", "source name kept for later errors");
+        check(data.styles.size() == 2 && data.buildings.size() == 2, "two styles, two buildings");
+
+        const platform::BuildingStyle& plaster = data.styles[0];
+        check(plaster.name == "plaster" && plaster.wall == "w.gltf" && plaster.window == "win.gltf" &&
+                  plaster.door == "d.gltf" && plaster.doorLeaf == "leaf.gltf" &&
+                  plaster.corner == "c.gltf" && plaster.roof == "r.gltf",
+              "every piece file read");
+        check(plaster.roofFitsX == 6 && plaster.roofFitsZ == 8, "roof_fits read as x, z");
+        check(near(plaster.heightScale, 1.0f), "scale defaults to 1");
+        check(plaster.line == 2, "style remembers its line");
+        check(near(data.styles[1].heightScale, 1.5f), "scale read");
+
+        const platform::BuildingEntry& first = data.buildings[0];
+        check(first.tileX == 29 && first.tileZ == 24 && first.style == "plaster" &&
+                  first.facingDegrees == 180,
+              "first building read");
+        check(near(first.offsetX, 0) && near(first.offsetY, 0) && near(first.offsetZ, 0),
+              "offset defaults to 0, 0, 0");
+        const platform::BuildingEntry& second = data.buildings[1];
+        check(second.facingDegrees == 90 && near(second.offsetX, 0.5f) && near(second.offsetY, -0.1f) &&
+                  near(second.offsetZ, 0.0f),
+              "second building read with offset");
+    });
+
+    run("Building styles are looked up by name", [] {
+        const platform::BuildingData data = parseBuildingText(styleBlock("plaster") + styleBlock("brick"));
+        const platform::BuildingStyle* brick = data.findStyle("brick");
+        check(brick != nullptr && brick->name == "brick", "brick found");
+        check(data.findStyle("plaster") == &data.styles[0], "plaster found");
+        check(data.findStyle("Brick") == nullptr, "names are case-sensitive");
+        check(data.findStyle("stone") == nullptr, "unknown name gives nullptr");
+    });
+
+    run("A building may use a style defined later in the file", [] {
+        const platform::BuildingData data =
+            parseBuildingText("[building]\ntile = 1, 1\nstyle = late\nfacing = 0\n" + styleBlock("late"));
+        check(data.buildings.size() == 1 && data.findStyle(data.buildings[0].style) != nullptr,
+              "forward reference resolved");
+    });
+
+    run("The real data/buildings.txt is valid", [] {
+        // make test runs from cpp/, like make run.
+        const platform::BuildingData data = platform::loadBuildingFile("data/buildings.txt");
+        check(!data.styles.empty() && !data.buildings.empty(), "has styles and buildings");
+        for (const platform::BuildingEntry& b : data.buildings) {
+            check(data.findStyle(b.style) != nullptr, "style '" + b.style + "' exists");
+        }
+    });
+
+    run("Bad building text is reported with file and line", [] {
+        const std::string style = styleBlock("plaster"); // lines 1-10
+        check(buildingTextFails("wall = w.gltf\n", "test:1: 'wall = w.gltf' must come after a [style] or [building] line"),
+              "key before any section");
+        check(buildingTextFails("[house]\n", "test:1: unknown section '[house]'"), "unknown section");
+        check(buildingTextFails("[style]\njust words\n", "test:2: expected '[style]', '[building]' or 'key = value'"),
+              "stray text");
+        check(buildingTextFails("[style]\ncolour = red\n", "test:2: unknown key 'colour' in [style]"),
+              "unknown style key");
+        check(buildingTextFails("[building]\nroof = r.gltf\n", "test:2: unknown key 'roof' in [building]"),
+              "style key in a building");
+        check(buildingTextFails("[style]\nname = a\nname = b\n", "test:3: 'name' is set twice in the same [style]"),
+              "repeated key");
+        check(buildingTextFails("[style]\nwall =\n", "test:2: 'wall' has no value"), "empty value");
+        check(buildingTextFails("\n\n[style]\nname = a\n", "test:3: [style] is missing 'wall'"),
+              "missing style key reported at the [style] line");
+        check(buildingTextFails(style + "[building]\ntile = 1, 1\nstyle = plaster\n",
+                                "test:11: [building] is missing 'facing'"),
+              "missing building key reported at the [building] line");
+        check(buildingTextFails(style + style, "test:11: style 'plaster' is defined twice"),
+              "duplicate style name");
+        check(buildingTextFails(style + "[building]\ntile = 1, 1\nstyle = brick\nfacing = 0\n",
+                                "test:13: unknown style 'brick'"),
+              "unknown style reported at its style line");
+        check(buildingTextFails(style + "[building]\ntile = 1, 1\nstyle = plaster\nfacing = 0\n"
+                                        "[building]\ntile = 1, 1\nstyle = plaster\nfacing = 90\n",
+                                "test:15: tile 1, 1 is already used by the [building] on line 11"),
+              "two buildings on the same tile");
+
+        // Bad values.
+        check(buildingTextFails("[building]\nfacing = 45\n", "test:2: facing must be 0, 90, 180 or 270"),
+              "facing not a right angle");
+        check(buildingTextFails("[building]\nfacing = north\n", "facing must be 0, 90, 180 or 270"),
+              "facing as a word");
+        check(buildingTextFails("[building]\ntile = 1 2\n", "test:2: tile must be two whole numbers"),
+              "tile without comma");
+        check(buildingTextFails("[building]\ntile = 1, 2, 3\n", "tile must be two whole numbers"),
+              "tile with 3 numbers");
+        check(buildingTextFails("[building]\ntile = 1.5, 2\n", "tile must be two whole numbers"),
+              "tile with a fraction");
+        check(buildingTextFails("[building]\noffset = 0, 1\n", "test:2: offset must be three numbers"),
+              "offset with 2 numbers");
+        check(buildingTextFails("[building]\noffset = 0, up, 0\n", "offset must be three numbers"),
+              "offset with a word");
+        check(buildingTextFails("[style]\nroof_fits = 6\n", "test:2: roof_fits must be two whole numbers"),
+              "roof_fits with 1 number");
+        check(buildingTextFails("[style]\nroof_fits = 0, 8\n", "roof_fits must be two whole numbers of at least 1"),
+              "roof_fits of 0");
+        check(buildingTextFails("[style]\nscale = 0\n", "test:2: scale must be more than 0"), "scale of 0");
+        check(buildingTextFails("[style]\nscale = big\n", "scale must be a number"), "scale as a word");
+    });
+
+    run("A missing building file is a clear error", [] {
+        bool threw = false;
+        try {
+            platform::loadBuildingFile("data/no-such-file.txt");
+        } catch (const std::runtime_error& error) {
+            threw = std::string(error.what()) == "Could not open building file 'data/no-such-file.txt'.";
+        }
+        check(threw, "names the missing file");
     });
 
     if (failures > 0) {
