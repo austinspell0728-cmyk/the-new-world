@@ -1,0 +1,74 @@
+# The trees of the town. Loaded when the game starts; edit and re-run, no
+# rebuild needed. This only changes the LOOK: every tree tile ('T' in the
+# town map in GameData.h) still blocks its whole tile, as before.
+#
+# Each tree tile picks one of the [tree] variants below, a turn (any angle)
+# and a size change from its tile coordinates, so the same tile always
+# shows the same tree. If a variant's model is missing or fails to load,
+# its tiles show the old box tree.
+#
+# [tree] blocks: tree models the town can use.
+#   name    a label for this variant
+#   model   file in assets/nature/
+#   scale   base size; the kit's trees are 7-9 m tall at 1.0
+#   trunk   where the trunk stands in the model (x, z, model units), so it
+#           lands on the tile centre. 0, 0 = the model's origin.
+#   weight  optional, default 1: how often it is picked compared with
+#           the others
+#
+# [rules] (optional, once):
+#   scale_variation  how much sizes vary around the base scale, as a
+#                    fraction: 0.15 = up to 15% smaller or larger (max 0.5)
+#   seed             a different seed gives every tile a different pick
+#
+# Comments must be on their own line.
+
+[rules]
+scale_variation = 0.15
+seed            = 1
+
+# Broadleaf trees: about 5-6.5 m tall at this scale, leaves from about
+# 1.7-2 m up, so the player walks under the crown.
+[tree]
+name   = oak 1
+model  = CommonTree_1.gltf
+scale  = 0.7
+trunk  = 0, 0
+weight = 2
+
+[tree]
+name   = oak 2
+model  = CommonTree_2.gltf
+scale  = 0.7
+trunk  = 0, 0
+weight = 2
+
+[tree]
+name   = oak 3
+model  = CommonTree_3.gltf
+scale  = 0.65
+trunk  = 0, 0
+weight = 2
+
+[tree]
+name   = oak 5
+model  = CommonTree_5.gltf
+scale  = 0.7
+trunk  = 0, 0
+weight = 2
+
+# Pines: about 5 m tall at this scale.
+[tree]
+name   = pine 1
+model  = Pine_1.gltf
+scale  = 0.65
+trunk  = 0, 0
+weight = 1
+
+# Its roots spread to one side; the trunk stands a little off the origin.
+[tree]
+name   = pine 3
+model  = Pine_3.gltf
+scale  = 0.65
+trunk  = 0.1, -0.3
+weight = 1

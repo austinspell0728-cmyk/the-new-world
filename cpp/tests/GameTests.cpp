@@ -25,6 +25,7 @@
 #include "../src/platform/BuildingData.h"
 #include "../src/platform/BuildingLayout.h"
 #include "../src/platform/CameraRelativeMove.h"
+#include "../src/platform/TreeData.h"
 
 namespace {
 
@@ -132,6 +133,31 @@ platform::BuildingRoof roofFits(int across, int along, const std::string& name =
     roof.fitsAcross = across;
     roof.fitsAlong = along;
     return roof;
+}
+
+// Parses tree text the same way the game parses data/trees.txt.
+platform::TreeData parseTreeText(const std::string& text) {
+    std::istringstream in(text);
+    return platform::parseTrees(in, "test");
+}
+
+// True if parsing `text` fails with an error message containing `expected`.
+bool treeTextFails(const std::string& text, const std::string& expected) {
+    try {
+        parseTreeText(text);
+    } catch (const std::runtime_error& error) {
+        if (std::string(error.what()).find(expected) != std::string::npos) {
+            return true;
+        }
+        std::cerr << "  (got: " << error.what() << ")\n";
+    }
+    return false;
+}
+
+// A complete [tree] block: 6 lines, starting with "[tree]".
+std::string treeBlock(const std::string& name, int weight = 1) {
+    return "[tree]\nname = " + name + "\nmodel = " + name + ".gltf\nscale = 0.7\ntrunk = 0, 0\nweight = " +
+           std::to_string(weight) + "\n";
 }
 
 } // namespace
@@ -1035,6 +1061,84 @@ int main() {
                        near(moved[i].z, plain[i].z) && near(moved[i].scaleY, 1.5f);
         }
         check(allMoved, "x and y offset added, heights scaled by 1.5, roof and gables raised to the taller walls");
+    });
+
+    // --- Tree data file (data/trees.txt) -------------------------------------
+
+    run("Tree text reads variants and rules", [] {
+        const platform::TreeData data = parseTreeText(
+            "# trees\n"
+            "[tree]\nname = oak\nmodel = CommonTree_1.gltf\nscale = 0.7\ntrunk = 0.1, -0.3\nweight = 3\n"
+            "[tree]\nname = pine\nmodel = Pine_1.gltf\nscale = 0.65\ntrunk = 0, 0\n"
+            "[rules]\nscale_variation = 0.2\nseed = 42\n");
+        check(data.source == "test" && data.variants.size() == 2, "two variants");
+        const platform::TreeVariant& oak = data.variants[0];
+        check(oak.name == "oak" && oak.model == "CommonTree_1.gltf" && near(oak.scale, 0.7f) &&
+                  near(oak.trunkX, 0.1f) && near(oak.trunkZ, -0.3f) && oak.weight == 3 && oak.line == 2,
+              "every key read");
+        check(data.variants[1].weight == 1, "weight defaults to 1");
+        check(near(data.rules.scaleVariation, 0.2f) && data.rules.seed == 42, "rules read");
+        check(data.findVariant("pine") == &data.variants[1] && data.findVariant("birch") == nullptr,
+              "lookup by name");
+    });
+
+    run("Tree rules have defaults, and no trees is allowed", [] {
+        const platform::TreeData data = parseTreeText("# nothing yet\n");
+        check(data.variants.empty(), "no variants: every tree stays a box tree");
+        check(near(data.rules.scaleVariation, 0.15f) && data.rules.seed == 0, "default rules");
+    });
+
+    run("The real data/trees.txt is valid", [] {
+        const platform::TreeData data = platform::loadTreeFile("data/trees.txt");
+        check(data.variants.size() >= 2, "several variants");
+    });
+
+    run("Bad tree text is reported with file and line", [] {
+        const std::string oak = treeBlock("oak"); // lines 1-6
+        check(treeTextFails("name = oak\n", "test:1: 'name = oak' must come after a [tree] or [rules] line"),
+              "key before any section");
+        check(treeTextFails("[bush]\n", "test:1: unknown section '[bush]'"), "unknown section");
+        check(treeTextFails("[tree]\nleafy\n", "test:2: expected a [section] or 'key = value'"), "stray text");
+        check(treeTextFails("[tree]\ncolour = green\n", "test:2: unknown key 'colour' in [tree]"),
+              "unknown tree key");
+        check(treeTextFails("[rules]\nscale = 1\n", "test:2: unknown key 'scale' in [rules]"),
+              "tree key in the rules");
+        check(treeTextFails("[tree]\nname = a\nname = b\n", "test:3: 'name' is set twice in the same [tree]"),
+              "repeated key");
+        check(treeTextFails("[tree]\nmodel =\n", "test:2: 'model' has no value"), "empty value");
+        check(treeTextFails("\n[tree]\nname = a\nmodel = a.gltf\nscale = 1\n", "test:2: [tree] is missing 'trunk'"),
+              "missing key reported at the [tree] line");
+        check(treeTextFails(oak + oak, "test:7: tree 'oak' is defined twice"), "duplicate name");
+        check(treeTextFails("[rules]\nseed = 1\n[rules]\n", "test:3: [rules] appears twice (first on line 1)"),
+              "two [rules]");
+
+        // Bad values.
+        check(treeTextFails("[tree]\nscale = 0\n", "test:2: scale must be more than 0"), "scale of 0");
+        check(treeTextFails("[tree]\nscale = big\n", "scale must be a number"), "scale as a word");
+        check(treeTextFails("[tree]\ntrunk = 0\n", "test:2: trunk must be two numbers"), "trunk with 1 number");
+        check(treeTextFails("[tree]\ntrunk = 0, 0, 0\n", "trunk must be two numbers"), "trunk with 3 numbers");
+        check(treeTextFails("[tree]\nweight = 0\n", "test:2: weight must be a whole number from 1 to 1000"),
+              "weight of 0");
+        check(treeTextFails("[tree]\nweight = 1.5\n", "weight must be a whole number from 1 to 1000"),
+              "weight with a fraction");
+        check(treeTextFails("[rules]\nscale_variation = 0.6\n", "test:2: scale_variation must be a number from 0 to 0.5"),
+              "variation too big");
+        check(treeTextFails("[rules]\nscale_variation = -0.1\n", "scale_variation must be a number from 0 to 0.5"),
+              "negative variation");
+        check(treeTextFails("[rules]\nseed = -1\n", "test:2: seed must be a whole number from 0 to 1000000"),
+              "negative seed");
+        check(treeTextFails("[rules]\nseed = 2.5\n", "seed must be a whole number from 0 to 1000000"),
+              "seed with a fraction");
+    });
+
+    run("A missing tree file is a clear error", [] {
+        bool threw = false;
+        try {
+            platform::loadTreeFile("data/no-such-trees.txt");
+        } catch (const std::runtime_error& error) {
+            threw = std::string(error.what()) == "Could not open tree file 'data/no-such-trees.txt'.";
+        }
+        check(threw, "names the missing file");
     });
 
     if (failures > 0) {

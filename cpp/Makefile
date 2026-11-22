@@ -42,7 +42,8 @@ GAME_SRC     := $(wildcard src/game/*.cpp)
 # Platform helpers written without raylib, so the tests can use them too.
 # They are compiled WITHOUT the raylib include path, so a raylib include
 # slipping into one of them breaks the build straight away.
-PURE_PLATFORM_SRC := src/platform/BuildingData.cpp src/platform/BuildingLayout.cpp
+PURE_PLATFORM_SRC := src/platform/BuildingData.cpp src/platform/BuildingLayout.cpp \
+                     src/platform/TreeData.cpp
 # Window, input and drawing: uses raylib.
 PLATFORM_SRC := $(filter-out $(PURE_PLATFORM_SRC),$(wildcard src/platform/*.cpp)) src/main.cpp
 TEST_SRC     := tests/GameTests.cpp
