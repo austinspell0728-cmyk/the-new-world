@@ -2,7 +2,10 @@ Building pieces from the Medieval Village MegaKit (Standard, free version)
 by Quaternius, https://quaternius.com. License: CC0 1.0, see
 License_Standard.txt (copied unchanged from the kit).
 
-Only the pieces the town uses are copied here, not the whole kit.
+Only the pieces the town uses are copied here, not the whole kit:
+wall, window and door panels for three house styles (plaster, brick,
+timber grid), doors, window frames, corner posts, four round-tile roofs
+(4x6, 4x8, 6x6, 6x8) and the gable ends for the 4- and 6-wide roofs.
 
 Changes from the kit's glTF/ folder:
 - Each .gltf keeps only its base-color texture. The normal, roughness and
