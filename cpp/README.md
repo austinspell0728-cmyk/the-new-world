@@ -27,10 +27,13 @@ Developer flags (both ignore the camera controls):
 ./build/new-world --screenshot build/shot.png 33 21 0 25
                     # same, camera aimed at tile (33, 21), facing yaw 0 (south), pitch 25
 ./build/new-world --benchmark                   # draw uncapped, print average FPS, quit
+./build/new-world --screenshot build/shot.png --fake-pad 0,1,0,0
+                    # pretend a pad holds its sticks (lx,ly,rx,ry; y up) and
+                    # print where the player and camera ended up
 ```
 
-The game reads `data/npcs.txt`, `data/buildings.txt` and `data/trees.txt`
-at startup, and the models from `assets/medieval/` (buildings) and
+The game reads `data/npcs.txt`, `data/buildings.txt`, `data/trees.txt` and
+`data/controls.txt` at startup, and the models from `assets/medieval/` (buildings) and
 `assets/nature/` (trees). It looks in `data/` under the
 folder you start it from (`cpp/` with `make run`), then in `../data/` next to
 the exe, so `cpp/build/new-world` also works when started from elsewhere.
@@ -46,6 +49,21 @@ the exe, so `cpp/build/new-world` also works when started from elsewhere.
 | **E** | Talk to the NPC next to you; press again to close |
 | **Tab** | Release the mouse to use other windows; Tab again to recapture |
 | **Esc** | Quit |
+
+With a gamepad (Xbox layout; plug it in or out at any time, keyboard and
+mouse keep working alongside it):
+
+| Input | Action |
+|---|---|
+| **Left stick** | Walk, relative to the camera |
+| **Right stick** | Turn and tilt the camera |
+| **A** | Talk / close the dialogue |
+| **Start** | Quit (there is no pause menu yet) |
+
+The on-screen hints follow whichever device you used last, and show the
+pad's name while one is connected. Sticks, dead zone (0.2, radial),
+response curve, camera speed, invert Y and the button mapping are in
+`data/controls.txt`; attack, dodge and cast are reserved there for later.
 
 ## The town
 
@@ -107,6 +125,7 @@ assets/nature/   the trees the town uses (CC0, see its README.txt)
 data/
   buildings.txt  house styles and which building uses which (loaded at runtime)
   trees.txt      tree variants and the rules for picking them (loaded at runtime)
+  controls.txt   gamepad sticks, feel and button mapping (loaded at runtime)
   npcs.txt       NPC names, positions, colors and lines (loaded at runtime)
 src/
   game/          rules and data, plain C++, never includes raylib
@@ -120,6 +139,9 @@ src/
     Vec3.h         small 3D vector type and ground-plane helpers
   platform/      window, input, camera and drawing
     InputReader.*        keys and mouse -> movement, camera turns, E, Tab
+    Gamepad.*            reads a gamepad (hot-plug), or the scripted test pad
+    InputMath.*          dead zone, response curve, sticks, combining devices (no raylib, tested)
+    ControlsData.*       reads data/controls.txt (no raylib, tested)
     CameraRelativeMove.h WASD + camera yaw -> world direction (no raylib)
     CameraRig.*          third-person orbit camera
     WorldMesh.*          the static map baked into one GPU mesh
@@ -134,7 +156,7 @@ src/
     RenderConfig.h       window, camera, shape sizes and colors
   main.cpp       main loop: turn camera -> read input -> step -> draw
 tests/
-  GameTests.cpp  81 tests for movement, map, town, NPC, control, building, tree and camera rules
+  GameTests.cpp  91 tests for movement, map, town, NPC, control, gamepad, building, tree and camera rules
 ```
 
 The rule of thumb: `game/` decides *what happens*; `platform/` decides *how
@@ -156,6 +178,9 @@ breaks the test build straight away.
 - No jumping, falling or slopes; everyone stands at y = 0.
 - Props and NPCs block their whole tile, even though they are drawn smaller.
 - NPCs stand still; dialogue is one line each, no choices.
+- The game normalizes the walking direction, so any stick tilt past the
+  dead zone walks at full speed (no slow walking with a light touch yet).
+  The response curve does make small camera turns finer.
 - Kit buildings have no lights, only the same fake per-direction shading
   as the boxes, so they look flat. Window glass is see-through, so the
   floor inside shows faintly.

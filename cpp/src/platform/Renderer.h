@@ -21,6 +21,17 @@
 
 namespace platform {
 
+// What the on-screen help should say. Chosen in main.cpp from the device
+// used last (keyboard/mouse or gamepad) and data/controls.txt.
+struct HudInfo {
+    bool gamepadHints = false;      // show gamepad controls instead of keys
+    std::string gamepadName;        // empty = no gamepad connected
+    std::string talkButton = "E";   // the key or button that talks
+    std::string quitButton = "Esc"; // the key or button that quits
+    std::string moveStick = "left stick";
+    std::string cameraStick = "right stick";
+};
+
 class Renderer {
 public:
     // Prepares GPU data for `world`: the static map mesh, the buildings in
@@ -33,8 +44,8 @@ public:
              const std::vector<TreePlacement>& trees, const std::string& treeAssetDir);
 
     // Draws one complete frame, seen through `cameraRig`: world, player,
-    // NPCs, their name labels and on-screen help text.
-    void draw(const game::Game& game, const CameraRig& cameraRig) const;
+    // NPCs, their name labels and on-screen help text (as `hud` says).
+    void draw(const game::Game& game, const CameraRig& cameraRig, const HudInfo& hud) const;
 
     // Meshes drawn per frame for the kit buildings and trees (shown by
     // --benchmark).
@@ -48,11 +59,11 @@ private:
                        Color body) const;
 
     void drawNameLabels(const game::Game& game, const Camera3D& camera) const;
-    void drawHud(const game::Game& game) const;
+    void drawHud(const game::Game& game, const HudInfo& hud) const;
 
     // The box at the bottom of the screen showing who is talking and their
     // line, wrapped to fit.
-    void drawDialogue(const game::Npc& speaker) const;
+    void drawDialogue(const game::Npc& speaker, const std::string& closeButton) const;
 
     BuildingModels buildingModels_; // these two must stay before worldMesh_
     TreeModels treeModels_;         // (see constructor)

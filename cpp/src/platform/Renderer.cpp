@@ -48,7 +48,7 @@ Renderer::Renderer(const game::World& world, const BuildingMap& buildings, const
       treeModels_(world, treeData, trees, treeAssetDir),
       worldMesh_(world, buildings, buildingModels_.modelled(), treeModels_.modelledTiles()) {}
 
-void Renderer::draw(const game::Game& game, const CameraRig& cameraRig) const {
+void Renderer::draw(const game::Game& game, const CameraRig& cameraRig, const HudInfo& hud) const {
     BeginDrawing();
     ClearBackground(render::kSkyColor);
 
@@ -68,7 +68,7 @@ void Renderer::draw(const game::Game& game, const CameraRig& cameraRig) const {
 
     // 2D overlays are drawn after EndMode3D so they stay flat on the screen.
     drawNameLabels(game, cameraRig.camera());
-    drawHud(game);
+    drawHud(game, hud);
 
     EndDrawing();
 }
@@ -114,28 +114,36 @@ void Renderer::drawNameLabels(const game::Game& game, const Camera3D& camera) co
     }
 }
 
-void Renderer::drawHud(const game::Game& game) const {
-    // Help text on a light panel, so it stays readable over dark roofs.
+void Renderer::drawHud(const game::Game& game, const HudInfo& hud) const {
+    // Help text on a light panel, so it stays readable over dark roofs. It
+    // describes whichever device was used last.
     DrawRectangle(0, 0, 820, 64, Color{255, 255, 255, 150});
     const game::Vec3 pos = game.player().position;
-    DrawText("Move: WASD   Camera: mouse, arrows   Talk: E   Free mouse: Tab   Quit: Esc", 12, 12,
-             20, render::kHudTextColor);
+    const std::string help =
+        hud.gamepadHints ? "Move: " + hud.moveStick + "   Camera: " + hud.cameraStick + "   Talk: " + hud.talkButton +
+                               "   Quit: " + hud.quitButton
+                         : "Move: WASD   Camera: mouse, arrows   Talk: E   Free mouse: Tab   Quit: Esc";
+    DrawText(help.c_str(), 12, 12, 20, render::kHudTextColor);
     DrawText(TextFormat("Tile: x %d, z %d", static_cast<int>(pos.x), static_cast<int>(pos.z)), 12,
              38, 20, render::kHudTextColor);
+    if (!hud.gamepadName.empty()) {
+        DrawText(("gamepad: " + hud.gamepadName).c_str(), 200, 38, 20, render::kHudTextColor);
+    }
     DrawFPS(render::kWindowWidth - 100, 12);
 
     // While talking, show the dialogue box; otherwise, hint when someone is
     // close enough to talk to.
     if (const game::Npc* speaker = game.activeDialogue()) {
-        drawDialogue(*speaker);
+        drawDialogue(*speaker, hud.gamepadHints ? hud.talkButton : "E");
     } else if (const game::Npc* npc = game.npcInReach()) {
-        const std::string prompt = "Press E to talk to " + npc->name;
+        const std::string prompt = "Press " + (hud.gamepadHints ? hud.talkButton : std::string("E")) +
+                                   " to talk to " + npc->name;
         drawLabel(prompt.c_str(), render::kWindowWidth / 2,
                   render::kWindowHeight - render::kDialogueBottomGap - 30, 22);
     }
 }
 
-void Renderer::drawDialogue(const game::Npc& speaker) const {
+void Renderer::drawDialogue(const game::Npc& speaker, const std::string& closeButton) const {
     using namespace render;
     const int textWidth = kDialogueWidth - kDialoguePadding * 2;
 
@@ -173,7 +181,7 @@ void Renderer::drawDialogue(const game::Npc& speaker) const {
         DrawText(row.c_str(), left + kDialoguePadding, y, kDialogueTextFontSize, kDialogueTextColor);
         y += rowHeight;
     }
-    DrawText("E: close", left + kDialoguePadding, y + 4, 18, kDialogueHintColor);
+    DrawText((closeButton + ": close").c_str(), left + kDialoguePadding, y + 4, 18, kDialogueHintColor);
 }
 
 } // namespace platform

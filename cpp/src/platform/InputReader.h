@@ -2,19 +2,20 @@
 //
 // Translates the keyboard and mouse (via raylib) into requests the rest of
 // the program understands. This is the only place that knows which keys and
-// mouse movements do what.
+// mouse movements do what. (The gamepad is read in Gamepad.h; main.cpp adds
+// the two together with InputMath.h, so either can be used at any time.)
 
 #pragma once
 
-#include "../game/Game.h"
+#include "InputMath.h"
 
 namespace platform {
 
-// Reads WASD right now and returns the requested movement as a world
-// direction, relative to the camera: W walks away from the camera, D walks
-// to its right, and so on. `cameraYaw` is CameraRig::yaw().
-// Pressing opposite keys together (e.g. A + D) cancels out on that axis.
-game::PlayerInput readPlayerInput(float cameraYaw);
+// Reads WASD right now as "forward / right" from the camera's point of
+// view: W = forward +1, S = -1, D = right +1, A = -1. Pressing opposite keys
+// together (e.g. A + D) cancels out on that axis. CameraRelativeMove.h turns
+// it into a world direction.
+MoveAxes readKeyboardMove();
 
 // How much the player wants to turn the camera this frame, in radians.
 //   yawDelta    positive turns the view left, negative turns it right
@@ -35,5 +36,10 @@ bool toggleMouseCapturePressed();
 
 // True on the frame E is pressed: talk to the nearby NPC (or stop talking).
 bool interactPressed();
+
+// True if the keyboard or mouse was used this frame: one of the game's keys
+// held, a mouse button pressed, or (while captured) the mouse moved. For
+// switching the on-screen hints between keyboard and gamepad.
+bool keyboardOrMouseUsed(bool mouseCaptured);
 
 } // namespace platform

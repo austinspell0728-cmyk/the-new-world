@@ -4,7 +4,6 @@
 
 #include "raylib.h"
 
-#include "CameraRelativeMove.h"
 #include "RenderConfig.h"
 
 namespace platform {
@@ -19,11 +18,7 @@ float axis(int negativeKey, int positiveKey) {
 
 } // namespace
 
-game::PlayerInput readPlayerInput(float cameraYaw) {
-    // The keys say "forward/right" from the camera's point of view;
-    // cameraRelativeMove turns that into a direction in the world.
-    return cameraRelativeMove(axis(KEY_S, KEY_W), axis(KEY_A, KEY_D), cameraYaw);
-}
+MoveAxes readKeyboardMove() { return {axis(KEY_S, KEY_W), axis(KEY_A, KEY_D)}; }
 
 CameraInput readCameraInput(float frameTime, bool useMouse) {
     const float keyTurn = render::kCameraKeyTurnDegPerSec * DEG2RAD * frameTime;
@@ -47,5 +42,18 @@ CameraInput readCameraInput(float frameTime, bool useMouse) {
 bool toggleMouseCapturePressed() { return IsKeyPressed(KEY_TAB); }
 
 bool interactPressed() { return IsKeyPressed(KEY_E); }
+
+bool keyboardOrMouseUsed(bool mouseCaptured) {
+    for (const int key : {KEY_W, KEY_A, KEY_S, KEY_D, KEY_E, KEY_TAB, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN}) {
+        if (IsKeyDown(key)) {
+            return true;
+        }
+    }
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        return true;
+    }
+    const Vector2 mouse = GetMouseDelta();
+    return mouseCaptured && (mouse.x != 0.0f || mouse.y != 0.0f);
+}
 
 } // namespace platform
