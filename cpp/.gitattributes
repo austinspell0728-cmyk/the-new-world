@@ -1,0 +1,14 @@
+# Line endings for everything under cpp/.
+#
+# Store text files with LF in the repository AND keep them as LF in the
+# working copy, whatever core.autocrlf is set to on this machine. This stops
+# git's "LF will be replaced by CRLF" warnings, and keeps the Makefile and
+# shell-style commands working with LF on every platform.
+* text=auto eol=lf
+
+# Never touch line endings in binary files.
+*.png binary
+*.jpg binary
+*.ttf binary
+*.wav binary
+*.ogg binary
