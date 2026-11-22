@@ -23,6 +23,7 @@
 #include "../src/game/WorldBuilder.h"
 // Raylib-free platform helpers; safe to include in the test build.
 #include "../src/platform/BuildingData.h"
+#include "../src/platform/BuildingLayout.h"
 #include "../src/platform/CameraRelativeMove.h"
 
 namespace {
@@ -726,6 +727,207 @@ int main() {
             threw = std::string(error.what()) == "Could not open building file 'data/no-such-file.txt'.";
         }
         check(threw, "names the missing file");
+    });
+
+    // --- Assembled building layout (platform/BuildingLayout.h) ----------------
+
+    // Building A: x 2..5, z 2..3, with a path touching its south side at x 3.
+    // Building B: an L shape at (7,3), (8,3), (7,4).
+    const auto layoutTestWorld = [] {
+        return game::World::fromRows(std::vector<std::string_view>{
+            "##########",
+            "#........#",
+            "#.BBBB...#",
+            "#.BBBB.BB#",
+            "#..,...B.#",
+            "#..@.....#",
+            "##########",
+        });
+    };
+
+    run("Buildings are found with their footprints", [&] {
+        const platform::BuildingMap map = platform::findBuildings(layoutTestWorld());
+        check(map.footprints.size() == 2, "two buildings");
+        const platform::Footprint& a = map.footprints[0];
+        check(a.x0 == 2 && a.z0 == 2 && a.width == 4 && a.depth == 2 && a.rectangular, "A is a 4x2 rectangle");
+        check(!map.footprints[1].rectangular, "B (L shape) is not a rectangle");
+        check(map.idAt(5, 3) == 0 && map.idAt(7, 4) == 1 && map.idAt(1, 1) == -1 && map.idAt(-1, 0) == -1,
+              "tile lookup");
+    });
+
+    run("Building entries are matched to buildings, with file and line errors", [&] {
+        const platform::BuildingMap map = platform::findBuildings(layoutTestWorld());
+        const std::string style = styleBlock("s"); // lines 1-10
+        const auto entry = [](int x, int z) {
+            return "[building]\ntile = " + std::to_string(x) + ", " + std::to_string(z) +
+                   "\nstyle = s\nfacing = 0\n";
+        };
+        const std::vector<platform::PlacedBuilding> placed =
+            platform::matchBuildings(map, parseBuildingText(style + entry(5, 3)));
+        check(placed.size() == 1 && placed[0].building == 0 && placed[0].style.name == "s",
+              "any tile of A picks A");
+
+        const auto matchFails = [&](const std::string& text, const std::string& expected) {
+            try {
+                platform::matchBuildings(map, parseBuildingText(text));
+            } catch (const std::runtime_error& error) {
+                if (std::string(error.what()).find(expected) != std::string::npos) {
+                    return true;
+                }
+                std::cerr << "  (got: " << error.what() << ")\n";
+            }
+            return false;
+        };
+        check(matchFails(style + entry(1, 1), "test:11: tile 1, 1 is not part of a building"),
+              "tile that is not a building");
+        check(matchFails(style + entry(99, 99), "test:11: tile 99, 99 is not part of a building"),
+              "tile outside the world");
+        check(matchFails(style + entry(2, 2) + entry(5, 3),
+                         "test:15: tile 5, 3 is the same building as the [building] on line 11"),
+              "two entries for one building");
+        check(matchFails(style + entry(7, 4), "test:11: the building at tile 7, 4 is not a plain rectangle"),
+              "L-shaped building");
+    });
+
+    run("The door goes where a path meets the door side", [&] {
+        const game::World world = layoutTestWorld();
+        const platform::Footprint a = platform::findBuildings(world).footprints[0];
+        check(platform::findDoorTile(world, a, 0) == 3, "south side: the path at x 3");
+        check(platform::findDoorTile(world, a, 180) == -1, "north side: no path");
+        check(platform::findDoorTile(world, a, 90) == -1, "east side: no path");
+    });
+
+    // The town's biggest building: 8 x 6 tiles at (29, 24), door to the north.
+    const platform::Footprint big{29, 24, 8, 6, true};
+    const auto styleFits = [](int fx, int fz) {
+        platform::BuildingStyle s;
+        s.roofFitsX = fx;
+        s.roofFitsZ = fz;
+        return s;
+    };
+    const auto facingEntry = [](int facing) {
+        platform::BuildingEntry e;
+        e.facingDegrees = facing;
+        return e;
+    };
+    const auto countOf = [](const std::vector<platform::PiecePlacement>& pieces, platform::Piece kind) {
+        int n = 0;
+        for (const platform::PiecePlacement& p : pieces) {
+            n += (p.piece == kind) ? 1 : 0;
+        }
+        return n;
+    };
+    const auto firstOf = [](const std::vector<platform::PiecePlacement>& pieces, platform::Piece kind) {
+        for (const platform::PiecePlacement& p : pieces) {
+            if (p.piece == kind) {
+                return p;
+            }
+        }
+        return platform::PiecePlacement{};
+    };
+
+    run("An 8x6 building gets 14 wall panels, one door, four corners and a roof", [&] {
+        const auto pieces = platform::planBuilding(big, styleFits(6, 8), facingEntry(180), 32);
+        const int panels = countOf(pieces, platform::Piece::Wall) + countOf(pieces, platform::Piece::Window) +
+                           countOf(pieces, platform::Piece::Door);
+        check(panels == 14, "4 + 4 panels on the 8-tile sides, 3 + 3 on the 6-tile sides");
+        check(countOf(pieces, platform::Piece::Door) == 1 && countOf(pieces, platform::Piece::DoorLeaf) == 1,
+              "one door and its leaf");
+        check(countOf(pieces, platform::Piece::Corner) == 4 && countOf(pieces, platform::Piece::Roof) == 1,
+              "four corners, one roof");
+
+        // Every panel stands on the footprint's edge, facing out.
+        bool onEdges = true;
+        for (const platform::PiecePlacement& p : pieces) {
+            if (p.piece == platform::Piece::Wall || p.piece == platform::Piece::Window ||
+                p.piece == platform::Piece::Door) {
+                const bool northSouth = (near(p.z, 24) && near(p.yawDegrees, 180)) || (near(p.z, 30) && near(p.yawDegrees, 0));
+                const bool eastWest = (near(p.x, 37) && near(p.yawDegrees, 90)) || (near(p.x, 29) && near(p.yawDegrees, 270));
+                onEdges = onEdges && (northSouth || eastWest) && near(p.y, 0) && near(p.scaleX, 1.0f);
+            }
+        }
+        check(onEdges, "panels on the edges, facing outward, 2 tiles each (no stretch)");
+    });
+
+    run("The door panel faces its path and the leaf sits inside the doorway", [&] {
+        const auto pieces = platform::planBuilding(big, styleFits(6, 8), facingEntry(180), 32);
+        const platform::PiecePlacement door = firstOf(pieces, platform::Piece::Door);
+        check(near(door.x, 32) && near(door.z, 24) && near(door.yawDegrees, 180),
+              "door on the north edge, over the path tile at x 32, facing north");
+        const platform::PiecePlacement leaf = firstOf(pieces, platform::Piece::DoorLeaf);
+        check(near(leaf.yawDegrees, 180) && std::abs(leaf.x - door.x) < 1.0f && leaf.z > 24.0f && leaf.z < 24.5f,
+              "leaf turned with the door, just inside the outside face");
+    });
+
+    run("Each facing puts the door on that side", [&] {
+        const auto doorFor = [&](int facing) {
+            return firstOf(platform::planBuilding(big, styleFits(6, 8), facingEntry(facing), -1),
+                           platform::Piece::Door);
+        };
+        const platform::PiecePlacement south = doorFor(0), east = doorFor(90), north = doorFor(180),
+                                       west = doorFor(270);
+        check(near(south.z, 30) && near(south.yawDegrees, 0), "0 = south edge");
+        check(near(east.x, 37) && near(east.yawDegrees, 90), "90 = east edge");
+        check(near(north.z, 24) && near(north.yawDegrees, 180), "180 = north edge");
+        check(near(west.x, 29) && near(west.yawDegrees, 270), "270 = west edge");
+        check(north.x > 29.0f && north.x < 37.0f && west.z > 24.0f && west.z < 30.0f,
+              "with no path the door is still on the side");
+    });
+
+    run("Odd side lengths stretch the panels to fit exactly", [&] {
+        // 7 wide: 4 panels of 1.75. 5 deep: 3 panels of 1.667.
+        const auto pieces = platform::planBuilding({0, 0, 7, 5, true}, styleFits(6, 8), facingEntry(0), -1);
+        bool stretched = true;
+        for (const platform::PiecePlacement& p : pieces) {
+            if (p.piece == platform::Piece::Wall || p.piece == platform::Piece::Window ||
+                p.piece == platform::Piece::Door) {
+                const bool alongX = near(p.yawDegrees, 0) || near(p.yawDegrees, 180);
+                stretched = stretched && near(p.scaleX, alongX ? 0.875f : 5.0f / 6.0f);
+            }
+        }
+        check(stretched, "panel stretch = side length / panels / 2");
+    });
+
+    run("The roof is turned and stretched to the footprint", [&] {
+        // An 8x6 building with a roof made for 6 (x) by 8 (z): turned 90 degrees, no stretch.
+        const platform::PiecePlacement turned =
+            firstOf(platform::planBuilding(big, styleFits(6, 8), facingEntry(0), -1), platform::Piece::Roof);
+        check(near(turned.yawDegrees, 90) && near(turned.scaleX, 1) && near(turned.scaleZ, 1),
+              "6x8 roof on an 8x6 building is turned, not stretched");
+        check(near(turned.x, 33) && near(turned.z, 27) && near(turned.y, platform::kit::kWallTop),
+              "centred on the footprint, on top of the walls");
+
+        // A 6x5 building is long in X but the 6x8 roof is long in Z, so it is turned.
+        const platform::PiecePlacement small =
+            firstOf(platform::planBuilding({0, 0, 6, 5, true}, styleFits(6, 8), facingEntry(0), -1),
+                    platform::Piece::Roof);
+        check(near(small.yawDegrees, 90) && near(small.scaleX, 5.0f / 6.0f) && near(small.scaleZ, 6.0f / 8.0f),
+              "turned, then its X spans the 5-tile depth and its Z the 6-tile width");
+
+        // A 5x7 building is long in Z like the roof: not turned.
+        const platform::PiecePlacement same =
+            firstOf(platform::planBuilding({0, 0, 5, 7, true}, styleFits(6, 8), facingEntry(0), -1),
+                    platform::Piece::Roof);
+        check(near(same.yawDegrees, 0) && near(same.scaleX, 5.0f / 6.0f) && near(same.scaleZ, 7.0f / 8.0f),
+              "not turned");
+    });
+
+    run("Height scale and offset move every piece", [&] {
+        platform::BuildingStyle style = styleFits(6, 8);
+        style.heightScale = 1.5f;
+        platform::BuildingEntry entry = facingEntry(0);
+        entry.offsetX = 0.25f;
+        entry.offsetY = -0.1f;
+        const auto plain = platform::planBuilding(big, styleFits(6, 8), facingEntry(0), -1);
+        const auto moved = platform::planBuilding(big, style, entry, -1);
+        bool allMoved = plain.size() == moved.size();
+        for (std::size_t i = 0; allMoved && i < plain.size(); ++i) {
+            const float expectedY = (plain[i].piece == platform::Piece::Roof) ? plain[i].y * 1.5f - 0.1f
+                                                                                : plain[i].y - 0.1f;
+            allMoved = near(moved[i].x, plain[i].x + 0.25f) && near(moved[i].y, expectedY) &&
+                       near(moved[i].z, plain[i].z) && near(moved[i].scaleY, 1.5f);
+        }
+        check(allMoved, "x and y offset added, heights scaled by 1.5, roof raised to the taller walls");
     });
 
     if (failures > 0) {
