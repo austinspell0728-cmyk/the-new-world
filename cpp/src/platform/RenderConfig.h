@@ -122,4 +122,13 @@ constexpr Color kPlayerNoseColor = {60, 40, 25, 255}; // shows which way the pla
 constexpr Color kSkyColor = {150, 190, 230, 255};
 constexpr Color kHudTextColor = {20, 24, 32, 255};
 
+// --- NPC name labels ----------------------------------------------------------
+
+// Names float above NPCs closer than this (tiles), so the far side of town
+// does not fill the screen with text.
+constexpr float kNameLabelMaxDistance = 14.0f;
+constexpr int kNameLabelFontSize = 18;
+constexpr Color kLabelTextColor = {245, 245, 245, 255};
+constexpr Color kLabelBackColor = {0, 0, 0, 140};
+
 } // namespace platform::render

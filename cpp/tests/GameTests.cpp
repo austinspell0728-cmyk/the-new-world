@@ -10,6 +10,7 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -17,6 +18,7 @@
 
 #include "../src/game/Game.h"
 #include "../src/game/GameData.h"
+#include "../src/game/NpcData.h"
 #include "../src/game/World.h"
 #include "../src/game/WorldBuilder.h"
 // Raylib-free platform helper; safe to include in the test build.
@@ -63,6 +65,29 @@ game::World smallRoom() {
 }
 
 bool near(float a, float b, float tolerance = 0.0001f) { return std::abs(a - b) <= tolerance; }
+
+// Parses NPC text the same way the game parses data/npcs.txt.
+std::vector<game::Npc> parseNpcText(const std::string& text) {
+    std::istringstream in(text);
+    return game::parseNpcs(in, "test");
+}
+
+// True if parsing `text` fails with an error message containing `expected`.
+bool npcTextFails(const std::string& text, const std::string& expected) {
+    try {
+        parseNpcText(text);
+    } catch (const std::runtime_error& error) {
+        return std::string(error.what()).find(expected) != std::string::npos;
+    }
+    return false;
+}
+
+// A one-NPC block at tile (x, z) for building test games.
+game::Npc npcAt(const std::string& name, int x, int z) {
+    return parseNpcText("[npc]\nname = " + name + "\ntile = " + std::to_string(x) + ", " +
+                        std::to_string(z) + "\ncolor = #ffffff\nline = Hi.\n")
+        .front();
+}
 
 constexpr float kPi = 3.14159265358979f;
 
@@ -393,6 +418,122 @@ int main() {
               "well should sit at its layout position plus the offset");
         check(world.tileAt(1, 1) == game::Tile::Grass, "terrain shows outside the town");
         check(world.tileAt(0, 0) == game::Tile::Wall, "terrain border wall is kept");
+    });
+
+    // --- NPC data file ------------------------------------------------------------
+
+    run("NPC text parses every field, skipping comments and blank lines", [] {
+        const auto npcs = parseNpcText(
+            "# a comment\n"
+            "\n"
+            "[npc]\n"
+            "name   = Mara\n"
+            "tile   = 20, 13\n"
+            "facing = 90\n"
+            "color  = #C0504d\n"
+            "line   = Fresh bread = warm bread!\n"
+            "\n"
+            "[npc]\n"
+            "name = Edda\n"
+            "tile = 3, 4\n"
+            "color = #000000\n"
+            "line = Halt.\n");
+        check(npcs.size() == 2, "two NPCs");
+        const game::Npc& mara = npcs[0];
+        check(mara.name == "Mara" && mara.line == "Fresh bread = warm bread!",
+              "name and line (an '=' inside the line is kept)");
+        check(near(mara.position.x, 20.5f) && near(mara.position.z, 13.5f) && near(mara.position.y, 0),
+              "stands in the centre of tile 20, 13 on the ground");
+        check(near(mara.facingYaw, kPi / 2.0f), "facing 90 degrees is +X");
+        check(mara.color == 0xC0504D, "color parsed from hex");
+        check(near(npcs[1].facingYaw, 0.0f), "facing defaults to 0");
+        check(near(mara.halfSize, game::data::kNpcHalfSize) && near(mara.height, game::data::kNpcHeight),
+              "size comes from GameData");
+    });
+
+    run("NPC text errors name the problem and the line", [] {
+        const std::string ok = "[npc]\nname = A\ntile = 1, 1\ncolor = #ffffff\nline = Hi.\n";
+        check(npcTextFails("[npc]\nname = A\ntile = 1, 1\ncolor = #ffffff\n", "test:1: [npc] is missing 'line'"),
+              "missing line reported at the [npc] line");
+        check(npcTextFails("name = A\n", "test:1: 'name = A' must come after an [npc] line"),
+              "key before any [npc]");
+        check(npcTextFails(ok + "[npc]\nname = B\nname = C\n", "test:8: 'name' is set twice"),
+              "repeated key");
+        check(npcTextFails("[npc]\nmood = grumpy\n", "unknown key 'mood'"), "unknown key");
+        check(npcTextFails("[npc]\ntile = 1 2\n", "tile must be two whole numbers"), "tile without comma");
+        check(npcTextFails("[npc]\ntile = 1, 2, 3\n", "tile must be two whole numbers"), "tile with 3 numbers");
+        check(npcTextFails("[npc]\ncolor = red\n", "color must look like #RRGGBB"), "named color");
+        check(npcTextFails("[npc]\ncolor = #12345\n", "color must look like #RRGGBB"), "short hex color");
+        check(npcTextFails("[npc]\nfacing = east\n", "facing must be a number"), "non-numeric facing");
+        check(npcTextFails("[npc]\nname =\n", "'name' has no value"), "empty value");
+        check(npcTextFails("[npc]\njust some words\n", "expected '[npc]' or 'key = value'"), "stray text");
+    });
+
+    run("The real data/npcs.txt loads and every NPC fits the starting world", [] {
+        // `make test` runs from cpp/, so the data folder is found relative to it.
+        const auto npcs = game::loadNpcFile("data/npcs.txt");
+        check(npcs.size() >= 3 && npcs.size() <= 4, "3 to 4 NPCs");
+        // The Game constructor throws if any NPC is misplaced.
+        const game::Game g(game::buildStartingWorld(game::data::kWorldSeed), npcs);
+        check(g.npcs().size() == npcs.size(), "all NPCs placed");
+    });
+
+    run("Missing NPC file is a clear error", [] {
+        bool threw = false;
+        try {
+            game::loadNpcFile("data/no-such-file.txt");
+        } catch (const std::runtime_error& error) {
+            threw = std::string(error.what()).find("Could not open NPC file") != std::string::npos;
+        }
+        check(threw, "should say the file could not be opened");
+    });
+
+    // --- NPCs in the world --------------------------------------------------------
+
+    run("NPCs in bad places are rejected", [] {
+        auto rejected = [](game::Npc npc, std::vector<game::Npc> others = {}) {
+            others.push_back(std::move(npc));
+            try {
+                game::Game g(smallRoom(), others);
+            } catch (const std::runtime_error&) {
+                return true;
+            }
+            return false;
+        };
+        check(rejected(npcAt("Wally", 0, 0)), "on a wall");
+        check(rejected(npcAt("Lost", 20, 20)), "outside the world");
+        check(rejected(npcAt("Lost", -1, 2)), "negative tile");
+        check(rejected(npcAt("Squatter", 3, 2)), "on the player's start tile");
+        check(rejected(npcAt("Twin", 1, 1), {npcAt("Twin", 1, 1)}), "two NPCs on one tile");
+        check(!rejected(npcAt("Fine", 1, 1)), "a free floor tile is accepted");
+    });
+
+    run("NPCs block the tile they stand on", [] {
+        game::Game g(smallRoom(), {npcAt("Post", 5, 2)});
+        hold(g, {1, 0}, 120);
+        const float rightEdge = g.player().position.x + g.player().halfSize;
+        check(rightEdge < 5.0f && rightEdge > 4.99f, "player stops flush against the NPC's tile");
+    });
+
+    run("NPC lookup by distance finds the nearest one in range", [] {
+        const game::Game g(smallRoom(), {npcAt("Near", 1, 1), npcAt("Far", 5, 3)});
+        const game::Vec3 point{2.0f, 0.0f, 2.0f}; // 0.71 from Near, 3.8 from Far
+        const game::Npc* found = g.nearestNpcWithin(point, 5.0f);
+        check(found != nullptr && found->name == "Near", "the closer NPC wins");
+        check(g.nearestNpcWithin(point, 0.5f) == nullptr, "nobody within half a tile");
+        const game::Npc* far = g.nearestNpcWithin({5.5f, 0.0f, 1.5f}, 2.0f);
+        check(far != nullptr && far->name == "Far", "from the other side, Far is nearest");
+        const game::Npc* edge = g.nearestNpcWithin({1.5f, 0.0f, 3.0f}, 1.5f);
+        check(edge != nullptr && edge->name == "Near", "an NPC exactly at the range counts");
+    });
+
+    run("The player's talk reach uses kTalkRange", [] {
+        // Player starts at (3.5, 2.5); NPC centres at (5.5, 2.5) are 2.0 away.
+        game::Game g(smallRoom(), {npcAt("Bob", 5, 2)});
+        check(game::data::kTalkRange < 2.0f, "test assumes a talk range under 2 tiles");
+        check(g.npcInReach() == nullptr, "2 tiles away is out of reach");
+        hold(g, {1, 0}, 120); // walk up to Bob
+        check(g.npcInReach() != nullptr && g.npcInReach()->name == "Bob", "next to Bob he is in reach");
     });
 
     if (failures > 0) {

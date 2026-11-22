@@ -1,0 +1,42 @@
+# NPCs in the starting town. Loaded when the game starts; edit and re-run,
+# no rebuild needed.
+#
+# One [npc] block per character:
+#   name    shown above their head and in the dialogue box
+#   tile    x, z of the WORLD tile they stand on (they stand in its centre).
+#           World tile = town layout column/row + the town offset (2, 2) in
+#           src/game/GameData.h. The tile must be walkable and not the
+#           player's start; the game refuses to start otherwise.
+#   facing  optional, degrees: 0 = south, 90 = east, 180 = north, 270 = west
+#   color   body color as #RRGGBB (placeholder art)
+#   line    what they say when you press E next to them
+#
+# Comments must be on their own line ('#' is also used in colors).
+
+[npc]
+name   = Mara
+tile   = 20, 13
+facing = 0
+color  = #c0504d
+line   = Fresh bread, still warm! Come back tomorrow for the honey cakes.
+
+[npc]
+name   = Old Tomas
+tile   = 24, 18
+facing = 0
+color  = #4a7fb5
+line   = This well has never run dry. Not once in sixty years.
+
+[npc]
+name   = Edda
+tile   = 23, 3
+facing = 0
+color  = #6b6b6b
+line   = North road's quiet today. Keep it that way.
+
+[npc]
+name   = Pell
+tile   = 37, 29
+facing = 90
+color  = #3f8f6f
+line   = Nothing biting yet. The pond's in no hurry, and neither am I.

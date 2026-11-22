@@ -19,17 +19,32 @@
 #include <cstring>
 #include <exception>
 #include <iostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "raylib.h"
 
 #include "game/Game.h"
 #include "game/GameData.h"
+#include "game/NpcData.h"
 #include "game/World.h"
 #include "game/WorldBuilder.h"
 #include "platform/CameraRig.h"
 #include "platform/InputReader.h"
 #include "platform/RenderConfig.h"
 #include "platform/Renderer.h"
+
+// Finds a file in cpp/data/. Works when the game is started from cpp/ (as
+// `make run` does) and when the exe is started from anywhere else, by also
+// looking next to the exe's folder (cpp/build/../data).
+std::string findDataFile(const std::string& name) {
+    const std::string fromWorkingDir = "data/" + name;
+    if (FileExists(fromWorkingDir.c_str())) {
+        return fromWorkingDir;
+    }
+    return std::string(GetApplicationDirectory()) + "../data/" + name;
+}
 
 int main(int argc, char** argv) {
     // --screenshot <file>: save a frame and exit (see header comment).
@@ -39,12 +54,14 @@ int main(int argc, char** argv) {
     }
     const bool benchmark = (argc == 2 && std::strcmp(argv[1], "--benchmark") == 0);
 
-    // Build the world before opening a window, so a broken map reports a
-    // clear error instead of flashing an empty window.
+    // Build the world and load NPCs before opening a window, so a broken map
+    // or data file reports a clear error instead of flashing an empty window.
     game::Game game = [] {
         try {
             // Terrain from the seed, then the hand-made town (WorldBuilder.h).
-            return game::Game(game::buildStartingWorld(game::data::kWorldSeed));
+            game::World world = game::buildStartingWorld(game::data::kWorldSeed);
+            std::vector<game::Npc> npcs = game::loadNpcFile(findDataFile("npcs.txt"));
+            return game::Game(std::move(world), std::move(npcs));
         } catch (const std::exception& error) {
             std::cerr << "Failed to load the world: " << error.what() << '\n';
             std::exit(1);

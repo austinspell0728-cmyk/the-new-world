@@ -15,6 +15,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
+#include <string>
 #include <utility>
 
 #include "GameData.h"
@@ -39,10 +41,56 @@ int substepsFor(float distance) {
 
 } // namespace
 
-Game::Game(World world)
+Game::Game(World world, std::vector<Npc> npcs)
     : world_(std::move(world)),
       player_{world_.playerStart(), data::kPlayerHalfSize, data::kPlayerHeight,
-              data::kPlayerWalkSpeed} {}
+              data::kPlayerWalkSpeed},
+      npcs_(std::move(npcs)) {
+    // Check NPC placement once, up front, so a bad data file gives a clear
+    // message instead of an NPC stuck in a wall or trapping the player.
+    const int startX = static_cast<int>(player_.position.x);
+    const int startZ = static_cast<int>(player_.position.z);
+    for (std::size_t i = 0; i < npcs_.size(); ++i) {
+        const Npc& npc = npcs_[i];
+        const int x = npc.tileX(), z = npc.tileZ();
+        const std::string where = "NPC '" + npc.name + "' at tile " + std::to_string(x) + ", " +
+                                  std::to_string(z);
+
+        if (npc.position.x < 0.0f || npc.position.z < 0.0f || x >= world_.width() ||
+            z >= world_.depth()) {
+            throw std::runtime_error(where + " is outside the world.");
+        }
+        if (isSolid(world_.tileAt(x, z))) {
+            throw std::runtime_error(where + " stands on a tile that blocks movement.");
+        }
+        if (x == startX && z == startZ) {
+            throw std::runtime_error(where + " stands on the player's start tile.");
+        }
+        for (std::size_t j = 0; j < i; ++j) {
+            if (npcs_[j].tileX() == x && npcs_[j].tileZ() == z) {
+                throw std::runtime_error(where + " shares a tile with '" + npcs_[j].name + "'.");
+            }
+        }
+    }
+}
+
+const Npc* Game::nearestNpcWithin(Vec3 point, float range) const {
+    const Npc* nearest = nullptr;
+    float nearestDistance = range;
+    for (const Npc& npc : npcs_) {
+        const float distance = lengthXZ(npc.position - point);
+        // <= so an NPC exactly at `range` still counts.
+        if (distance <= nearestDistance) {
+            nearest = &npc;
+            nearestDistance = distance;
+        }
+    }
+    return nearest;
+}
+
+const Npc* Game::npcInReach() const {
+    return nearestNpcWithin(player_.position, data::kTalkRange);
+}
 
 void Game::step(const PlayerInput& input, float dt) {
     // Normalizing does two jobs: diagonal movement is not ~41% faster than
@@ -129,9 +177,23 @@ bool Game::overlapsSolid(Vec3 centre, float halfSize) const {
 
     for (int z = minZ; z <= maxZ; ++z) {
         for (int x = minX; x <= maxX; ++x) {
-            if (isSolid(world_.tileAt(x, z))) {
+            if (isBlocked(x, z)) {
                 return true;
             }
+        }
+    }
+    return false;
+}
+
+bool Game::isBlocked(int x, int z) const {
+    if (isSolid(world_.tileAt(x, z))) {
+        return true;
+    }
+    // NPCs block the whole tile they stand on, like trees and stalls. This
+    // keeps collision on the tile grid, so the same snap-to-edge logic works.
+    for (const Npc& npc : npcs_) {
+        if (npc.tileX() == x && npc.tileZ() == z) {
+            return true;
         }
     }
     return false;

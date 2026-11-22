@@ -22,12 +22,17 @@ public:
     // already be open.
     explicit Renderer(const game::World& world);
 
-    // Draws one complete frame, seen through `cameraRig`: world, player and
-    // on-screen help text.
+    // Draws one complete frame, seen through `cameraRig`: world, player,
+    // NPCs, their name labels and on-screen help text.
     void draw(const game::Game& game, const CameraRig& cameraRig) const;
 
 private:
-    void drawPlayer(const game::Player& player) const;
+    // A standing capsule with a small "nose" showing which way it faces.
+    // Used for the player and NPCs alike.
+    void drawCharacter(game::Vec3 feet, float halfSize, float height, float facingYaw,
+                       Color body) const;
+
+    void drawNameLabels(const game::Game& game, const Camera3D& camera) const;
     void drawHud(const game::Game& game) const;
 
     WorldMesh worldMesh_;
