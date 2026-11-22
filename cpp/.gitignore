@@ -17,3 +17,7 @@ raylib/
 # The full Medieval Village MegaKit download lives here locally (300+ MB).
 # Only the pieces the town uses are committed, in assets/medieval/.
 /assets/buildings/
+
+# The full Stylized Nature MegaKit download lives here locally (100+ MB).
+# Only the trees the town uses are committed, in assets/nature/.
+/assets/environment/
