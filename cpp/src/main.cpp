@@ -22,6 +22,7 @@
 #include <cstring>
 #include <exception>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -120,9 +121,12 @@ int main(int argc, char** argv) {
         cameraRig.orbit(std::strtof(argv[5], nullptr) * DEG2RAD - cameraRig.yaw(),
                         std::strtof(argv[6], nullptr) * DEG2RAD - cameraRig.pitch());
     }
-    const platform::Renderer renderer(game.world(), buildings, placedBuildings,
-                                      findCppPath("assets/medieval") + "/", treeData, trees,
-                                      findCppPath("assets/nature") + "/");
+    // The renderer owns GPU data (meshes, textures, a shader), which must be
+    // freed while the window is still open, so it is held in an optional
+    // and destroyed explicitly before CloseWindow() below.
+    std::optional<const platform::Renderer> renderer;
+    renderer.emplace(game.world(), buildings, placedBuildings, findCppPath("assets/medieval") + "/", treeData,
+                     trees, findCppPath("assets/nature") + "/");
 
     // Fixed time step: real elapsed time is collected in `accumulator`, and
     // the game advances in equal slices of kFixedTimeStep. Rendering can run
@@ -187,7 +191,7 @@ int main(int argc, char** argv) {
 
         // 4. Aim the camera at the player's new position, then draw.
         cameraRig.follow(customView ? viewTarget : game.player().position);
-        renderer.draw(game, cameraRig);
+        renderer->draw(game, cameraRig);
 
         // Screenshot mode: wait a few frames so the window has settled.
         if (screenshotPath != nullptr && ++frame == 30) {
@@ -207,13 +211,14 @@ int main(int argc, char** argv) {
                 std::cout << "Benchmark: " << kTimedFrames << " frames in " << seconds
                           << " s = " << (kTimedFrames / seconds) << " FPS ("
                           << (seconds * 1000.0 / kTimedFrames) << " ms per frame), "
-                          << renderer.buildingDrawCount() << " building and " << renderer.treeDrawCount()
+                          << renderer->buildingDrawCount() << " building and " << renderer->treeDrawCount()
                           << " tree mesh draw(s) per frame\n";
                 break;
             }
         }
     }
 
+    renderer.reset(); // free GPU data first, while the window is open
     CloseWindow();
     return 0;
 }
