@@ -5,7 +5,6 @@
 
 #include "World.h"
 
-#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -85,10 +84,6 @@ World World::fromRows(const std::vector<std::string_view>& rows) {
     }
 
     return World(width, depth, std::move(tiles), playerStart);
-}
-
-bool World::isWalkableAt(float x, float z) const {
-    return !isSolid(tileAt(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(z))));
 }
 
 Tile World::tileAt(int x, int z) const {

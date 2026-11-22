@@ -63,9 +63,6 @@ public:
     // edge of the world.
     Tile tileAt(int x, int z) const;
 
-    // True if the tile under ground point (x, z) can be walked on.
-    bool isWalkableAt(float x, float z) const;
-
     // Centre of the tile marked '@', at ground height (y = 0), in tiles.
     Vec3 playerStart() const { return playerStart_; }
 
