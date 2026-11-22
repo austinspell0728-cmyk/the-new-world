@@ -27,6 +27,7 @@
 #include "../src/platform/BuildingData.h"
 #include "../src/platform/BuildingLayout.h"
 #include "../src/platform/CameraRelativeMove.h"
+#include "../src/platform/InputMath.h"
 #include "../src/platform/TreeData.h"
 #include "../src/platform/TreeLayout.h"
 
@@ -1462,6 +1463,123 @@ int main() {
         }
         check(biggestStep <= maxOut, "release: at most 0.67 tiles per frame at 60 FPS");
         check(framesOut >= 6 && framesOut <= 10, "release takes about 0.15 s");
+    });
+
+    // --- Gamepad input maths (platform/InputMath.h) ----------------------------
+
+    const auto stickLength = [](platform::Stick s) { return std::sqrt(s.x * s.x + s.y * s.y); };
+
+    run("Dead zone: inside and at the edge give 0, full gives 1, no jump", [&] {
+        const float dz = 0.2f;
+        check(stickLength(platform::applyRadialDeadZone({0.1f, 0.1f}, dz)) == 0.0f, "inside (0.14 from centre): 0");
+        check(stickLength(platform::applyRadialDeadZone({0.2f, 0.0f}, dz)) == 0.0f, "exactly at the edge: 0");
+        check(stickLength(platform::applyRadialDeadZone({0.0f, -0.2f}, dz)) == 0.0f, "at the edge, other axis: 0");
+        check(near(platform::applyRadialDeadZone({1.0f, 0.0f}, dz).x, 1.0f), "full right: 1");
+        check(near(platform::applyRadialDeadZone({0.0f, -1.0f}, dz).y, -1.0f), "full down: -1");
+        check(near(platform::applyRadialDeadZone({0.6f, 0.0f}, dz).x, 0.5f), "halfway out of the dead zone: 0.5");
+
+        // Sweep from the centre to full tilt: the output never jumps.
+        float previous = 0.0f, biggestJump = 0.0f;
+        for (int i = 0; i <= 1000; ++i) {
+            const float in = static_cast<float>(i) / 1000.0f;
+            const float out = stickLength(platform::applyRadialDeadZone({in * 0.6f, in * 0.8f}, dz));
+            biggestJump = std::max(biggestJump, out - previous);
+            check(out >= previous, "never goes down while tilting further");
+            previous = out;
+        }
+        check(biggestJump < 0.002f, "steps of 0.001 in give at most ~0.00125 out: no jump at the edge");
+
+        // Direction is kept.
+        const platform::Stick d = platform::applyRadialDeadZone({0.3f, 0.4f}, dz); // length 0.5
+        check(near(d.y / d.x, 0.4f / 0.3f), "direction kept");
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        check(stickLength(platform::applyRadialDeadZone({nan, 0.5f}, dz)) == 0.0f, "NaN counts as centred");
+    });
+
+    run("Diagonals are no faster than straight", [&] {
+        // A real pad's corner can read (1, 1): length 1.41 before capping.
+        const platform::Stick corner = platform::shapeStick({1.0f, 1.0f}, 0.2f, 1.5f);
+        const platform::Stick straight = platform::shapeStick({1.0f, 0.0f}, 0.2f, 1.5f);
+        check(near(stickLength(corner), 1.0f) && near(stickLength(straight), 1.0f), "both have length 1");
+        check(near(corner.x, corner.y), "and the corner still points diagonally");
+        const platform::MoveAxes move = platform::stickToMove(corner);
+        check(near(std::sqrt(move.forward * move.forward + move.right * move.right), 1.0f), "as movement too");
+    });
+
+    run("Response curve is monotonic, 0 -> 0 and 1 -> 1, finer near the centre", [] {
+        float previous = -1.0f;
+        bool monotonic = true;
+        for (int i = 0; i <= 100; ++i) {
+            const float out = platform::responseCurve(static_cast<float>(i) / 100.0f, 1.5f);
+            monotonic = monotonic && out >= previous;
+            previous = out;
+        }
+        check(monotonic, "never goes down");
+        check(platform::responseCurve(0.0f, 1.5f) == 0.0f && near(platform::responseCurve(1.0f, 1.5f), 1.0f), "ends");
+        check(platform::responseCurve(0.5f, 1.5f) < 0.5f, "half tilt gives less than half: finer control");
+        check(near(platform::responseCurve(0.5f, 1.0f), 0.5f), "exponent 1 is linear");
+        check(near(platform::responseCurve(0.5f, 0.2f), 0.5f), "exponents below 1 count as 1");
+    });
+
+    run("Sticks map to movement and camera turns with the right signs", [] {
+        const platform::MoveAxes up = platform::stickToMove({0.0f, 1.0f});
+        check(near(up.forward, 1.0f) && near(up.right, 0.0f), "stick up walks forward (away from the camera)");
+        check(near(platform::stickToMove({1.0f, 0.0f}).right, 1.0f), "stick right walks right");
+
+        const float dt = 0.5f; // half a second at 90 degrees per second = 45 degrees
+        const platform::CameraTurn right = platform::stickToCameraTurn({1.0f, 0.0f}, 90.0f, false, dt);
+        check(near(right.yawDelta, -kPi / 4.0f) && right.pitchDelta == 0.0f, "right turns the view right (like the mouse)");
+        const platform::CameraTurn upTurn = platform::stickToCameraTurn({0.0f, 1.0f}, 90.0f, false, dt);
+        check(near(upTurn.pitchDelta, -kPi / 4.0f), "up tilts the view up");
+        check(near(platform::stickToCameraTurn({0.0f, 1.0f}, 90.0f, true, dt).pitchDelta, kPi / 4.0f),
+              "invert Y: up tilts the view down");
+        const platform::CameraTurn none = platform::stickToCameraTurn({1.0f, 1.0f}, 90.0f, false, 0.0f);
+        check(none.yawDelta == 0.0f && none.pitchDelta == 0.0f, "no time, no turn");
+    });
+
+    run("Keyboard and mouse behave exactly as before when the pad is idle", [] {
+        // Every WASD combination at several camera angles: adding a centred
+        // stick gives bit-for-bit the same world direction as before.
+        const platform::Stick idle = platform::shapeStick({0.05f, -0.1f}, 0.2f, 1.5f); // drift inside the dead zone
+        bool same = true;
+        for (const float forward : {-1.0f, 0.0f, 1.0f}) {
+            for (const float right : {-1.0f, 0.0f, 1.0f}) {
+                for (const float yaw : {0.0f, 0.7f, kPi, -2.1f}) {
+                    const game::PlayerInput before = platform::cameraRelativeMove(forward, right, yaw);
+                    const platform::MoveAxes combined =
+                        platform::combineMove({forward, right}, platform::stickToMove(idle));
+                    const game::PlayerInput after = platform::cameraRelativeMove(combined.forward, combined.right, yaw);
+                    same = same && before.moveX == after.moveX && before.moveZ == after.moveZ;
+                }
+            }
+        }
+        check(same, "movement identical");
+
+        // Mouse and arrow turns pass through unchanged too.
+        bool turnSame = true;
+        for (const float yaw : {-0.3f, 0.0f, 0.0123f}) {
+            for (const float pitch : {-0.05f, 0.0f, 0.2f}) {
+                const platform::CameraTurn mouse{yaw, pitch};
+                const platform::CameraTurn combined =
+                    platform::combineTurn(mouse, platform::stickToCameraTurn(idle, 150.0f, false, 1.0f / 60.0f));
+                turnSame = turnSame && combined.yawDelta == mouse.yawDelta && combined.pitchDelta == mouse.pitchDelta;
+            }
+        }
+        check(turnSame, "camera turn identical");
+    });
+
+    run("Hints follow the device used last", [] {
+        using platform::InputDevice;
+        platform::LastUsedDevice device;
+        check(device.current() == InputDevice::KeyboardMouse, "starts on keyboard/mouse");
+        check(device.update(false, true, true) == InputDevice::Gamepad, "pad used -> gamepad");
+        check(device.update(false, false, true) == InputDevice::Gamepad, "nothing used -> no change");
+        check(device.update(true, true, true) == InputDevice::Gamepad, "both used -> no change");
+        check(device.update(true, false, true) == InputDevice::KeyboardMouse, "keyboard used -> keyboard/mouse");
+        check(device.update(true, true, true) == InputDevice::KeyboardMouse, "both used -> still no change");
+        device.update(false, true, true);
+        check(device.update(false, false, false) == InputDevice::KeyboardMouse, "pad unplugged -> keyboard/mouse");
+        check(device.update(false, true, false) == InputDevice::KeyboardMouse, "no pad: pad activity ignored");
     });
 
     if (failures > 0) {
