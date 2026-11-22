@@ -55,9 +55,10 @@ the exe, so `cpp/build/new-world` also works when started from elsewhere.
   building; a door is drawn wherever a path or the square meets it.
 - Every solid tile (building, tree, stall, well, water, wall) blocks its
   whole square, and so does each NPC's tile.
-- `data/buildings.txt` says which buildings are assembled from Medieval
-  Village MegaKit pieces (walls, door, corners, roof in
-  `assets/medieval/`), with their style and door side. Look only: footprints
+- `data/buildings.txt` says how the nine buildings are assembled from
+  Medieval Village MegaKit pieces (`assets/medieval/`): three wall styles
+  (plaster, brick, timber), four round-tile roofs (each building gets the
+  one that needs the least stretching), and each building's door side. Look only: footprints
   and collision still come from the town map. Buildings not listed, or whose
   pieces fail to load, are drawn as the old colored boxes. At startup all
   pieces are merged into one mesh per material, so the houses cost a handful
@@ -119,7 +120,7 @@ src/
     RenderConfig.h       window, camera, shape sizes and colors
   main.cpp       main loop: turn camera -> read input -> step -> draw
 tests/
-  GameTests.cpp  58 tests for movement, map, town, NPC, control and building-layout rules
+  GameTests.cpp  61 tests for movement, map, town, NPC, control and building-layout rules
 ```
 
 The rule of thumb: `game/` decides *what happens*; `platform/` decides *how
@@ -130,10 +131,15 @@ breaks the test build straight away.
 
 ## Known limits
 
-- The camera has no collision, so it can pass through buildings.
+- The camera has no collision, so it can pass through buildings. With the
+  kit houses (about 8 m tall with their roofs) this happens often near
+  them: the view fills with roof or wall.
 - No jumping, falling or slopes; everyone stands at y = 0.
 - Props and NPCs block their whole tile, even though they are drawn smaller.
 - NPCs stand still; dialogue is one line each, no choices.
 - Kit buildings have no lights, only the same fake per-direction shading
-  as the boxes, so they look flat. Their window openings are empty and the
-  roof's gable ends are open (separate kit pieces, not added yet).
+  as the boxes, so they look flat. Window glass is see-through, so the
+  floor inside shows faintly.
+- Doors sit on a whole 2 m wall panel, so a door can be up to ~0.9 tiles
+  off the centre of its path (most are 0.5 off; the 7-tile-wide houses
+  0.88).

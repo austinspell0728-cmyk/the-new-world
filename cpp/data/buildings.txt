@@ -96,10 +96,59 @@ model = Roof_RoundTiles_6x8.gltf
 gable = Roof_Front_Brick6.gltf
 fits  = 6, 8
 
-# --- Buildings ---------------------------------------------------------------
+# --- The nine buildings of the town --------------------------------------------
+# Listed north-west to south-east. Each faces the path that reaches it.
+
+# North-west house, 6 x 5.
+[building]
+tile   = 4, 4
+style  = brick
+facing = 0
+
+# North house, 6 x 6.
+[building]
+tile   = 12, 4
+style  = plaster
+facing = 0
+
+# North-east house by the square, 7 x 5.
+[building]
+tile   = 28, 4
+style  = timber
+facing = 0
+
+# West house, 7 x 4 (paths on both long sides; the door is on the south).
+[building]
+tile   = 4, 11
+style  = plaster
+facing = 0
+
+# East house, 6 x 4.
+[building]
+tile   = 37, 11
+style  = brick
+facing = 0
+
+# South-west house, 7 x 6.
+[building]
+tile   = 4, 21
+style  = timber
+facing = 180
+
+# South-east house, 6 x 5.
+[building]
+tile   = 38, 21
+style  = plaster
+facing = 180
 
 # The biggest building, 8 x 6, east of the main road.
 [building]
 tile   = 29, 24
 style  = plaster
+facing = 180
+
+# South house beside the main road, 6 x 5.
+[building]
+tile   = 15, 25
+style  = brick
 facing = 180
