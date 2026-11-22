@@ -24,7 +24,7 @@ struct CameraInput {
     float pitchDelta = 0.0f;
 };
 
-// Reads mouse movement plus Q/E and the arrow keys. `frameTime` (seconds)
+// Reads mouse movement plus the arrow keys. `frameTime` (seconds)
 // makes key turning speed independent of the frame rate; mouse movement
 // already is. With `useMouse` false (the mouse is released), only the keys
 // turn the camera.
@@ -32,5 +32,8 @@ CameraInput readCameraInput(float frameTime, bool useMouse);
 
 // True on the frame Tab is pressed: release or recapture the mouse.
 bool toggleMouseCapturePressed();
+
+// True on the frame E is pressed: talk to the nearby NPC (or stop talking).
+bool interactPressed();
 
 } // namespace platform

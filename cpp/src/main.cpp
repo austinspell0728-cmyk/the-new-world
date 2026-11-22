@@ -140,6 +140,12 @@ int main(int argc, char** argv) {
         //    every game step in it.
         const game::PlayerInput input = platform::readPlayerInput(cameraRig.yaw());
 
+        //    E is a one-off press, so it goes to the game once per frame here,
+        //    not once per fixed step (which could apply it twice).
+        if (interactive && platform::interactPressed()) {
+            game.interact();
+        }
+
         // 3. Advance the game in fixed steps.
         while (accumulator >= dt) {
             game.step(input, dt);

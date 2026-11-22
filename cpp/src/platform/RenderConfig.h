@@ -48,7 +48,7 @@ constexpr float kCameraMaxPitchDeg = 75.0f;
 constexpr float kCameraStartYawDeg = 180.0f;
 
 // Orbit speed: radians turned per pixel of mouse movement, and degrees per
-// second while Q/E or an arrow key is held.
+// second while an arrow key is held.
 constexpr float kMouseSensitivity = 0.004f;
 constexpr float kCameraKeyTurnDegPerSec = 120.0f;
 
@@ -130,5 +130,17 @@ constexpr float kNameLabelMaxDistance = 14.0f;
 constexpr int kNameLabelFontSize = 18;
 constexpr Color kLabelTextColor = {245, 245, 245, 255};
 constexpr Color kLabelBackColor = {0, 0, 0, 140};
+
+// --- Dialogue box -------------------------------------------------------------
+
+constexpr int kDialogueWidth = 760;      // pixels
+constexpr int kDialogueBottomGap = 40;   // from the bottom of the window
+constexpr int kDialoguePadding = 18;
+constexpr int kDialogueNameFontSize = 24;
+constexpr int kDialogueTextFontSize = 22;
+constexpr Color kDialogueBackColor = {16, 18, 24, 215};
+constexpr Color kDialogueNameColor = {240, 204, 110, 255};
+constexpr Color kDialogueTextColor = {240, 240, 240, 255};
+constexpr Color kDialogueHintColor = {170, 170, 170, 255};
 
 } // namespace platform::render

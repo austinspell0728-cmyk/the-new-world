@@ -536,6 +536,50 @@ int main() {
         check(g.npcInReach() != nullptr && g.npcInReach()->name == "Bob", "next to Bob he is in reach");
     });
 
+    // --- Talking (E) ----------------------------------------------------------------
+
+    run("Talking near an NPC opens their line; talking again closes it", [] {
+        game::Game g(smallRoom(), {npcAt("Bob", 5, 2)});
+        hold(g, {1, 0}, 120); // walk up to Bob
+        check(g.activeDialogue() == nullptr, "no dialogue before pressing E");
+        g.interact();
+        check(g.activeDialogue() != nullptr && g.activeDialogue()->name == "Bob", "Bob is talking");
+        check(g.activeDialogue()->line == "Hi.", "his line comes from his data");
+        g.interact();
+        check(g.activeDialogue() == nullptr, "pressing E again closes it");
+    });
+
+    run("Talking with nobody in reach does nothing", [] {
+        game::Game g(smallRoom(), {npcAt("Bob", 5, 2)}); // 2 tiles away at the start
+        g.interact();
+        check(g.activeDialogue() == nullptr, "no dialogue opens");
+    });
+
+    run("Walking out of reach closes the dialogue", [] {
+        game::Game g(smallRoom(), {npcAt("Bob", 5, 2)});
+        hold(g, {1, 0}, 120);
+        g.interact();
+        hold(g, {-1, 0}, 2); // a small step back is still in reach
+        check(g.activeDialogue() != nullptr, "still talking after a small step");
+        hold(g, {-1, 0}, 120);
+        check(g.activeDialogue() == nullptr, "walking away ends the conversation");
+    });
+
+    run("With two NPCs in reach, talking picks the nearer one", [] {
+        // Player starts at (3.5, 2.5). "Left" stands at (2.5, 2.5), 1.0 away;
+        // "Up" stands at (4.5, 1.5), 1.41 away. Both are within kTalkRange.
+        game::Game g(game::World::fromRows(std::vector<std::string_view>{
+                         "#######",
+                         "#.....#",
+                         "#..@..#",
+                         "#######",
+                     }),
+                     {npcAt("Left", 2, 2), npcAt("Up", 4, 1)});
+        g.interact();
+        check(g.activeDialogue() != nullptr && g.activeDialogue()->name == "Left",
+              "Left (1.0 away) is nearer than Up (1.41 away)");
+    });
+
     if (failures > 0) {
         std::cerr << failures << " check(s) failed.\n";
         return 1;

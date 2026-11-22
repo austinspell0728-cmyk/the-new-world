@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <cstddef>
+#include <optional>
 #include <vector>
 
 #include "Npc.h"
@@ -67,6 +69,14 @@ public:
     // or nullptr.
     const Npc* npcInReach() const;
 
+    // The talk button (E). Called once per key press, not once per step.
+    // If a dialogue is open, closes it; otherwise opens one with the NPC in
+    // reach, if any. Walking out of reach also closes the dialogue (in step).
+    void interact();
+
+    // The NPC whose line is showing, or nullptr if no dialogue is open.
+    const Npc* activeDialogue() const;
+
 private:
     // Moves the player along one ground axis, stopping at solid tiles.
     void moveAlongX(float distance);
@@ -80,6 +90,10 @@ private:
     World world_;
     Player player_;
     std::vector<Npc> npcs_;
+
+    // Index into npcs_ of the NPC being talked to. An index rather than a
+    // pointer, so it stays valid if npcs_ ever grows.
+    std::optional<std::size_t> talkingTo_;
 };
 
 } // namespace game

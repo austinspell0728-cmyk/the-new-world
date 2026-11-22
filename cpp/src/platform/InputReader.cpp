@@ -34,9 +34,9 @@ CameraInput readCameraInput(float frameTime, bool useMouse) {
 
     CameraInput input;
 
-    // Mouse right / E / Right arrow turn the view right (negative yaw).
-    input.yawDelta = -mouse.x * render::kMouseSensitivity +
-                     axis(KEY_E, KEY_Q) * keyTurn + axis(KEY_RIGHT, KEY_LEFT) * keyTurn;
+    // Mouse right / Right arrow turn the view right (negative yaw).
+    // (Q/E used to turn too; E is now the talk key.)
+    input.yawDelta = -mouse.x * render::kMouseSensitivity + axis(KEY_RIGHT, KEY_LEFT) * keyTurn;
 
     // Mouse down / Down arrow tilt the view further down (positive pitch).
     input.pitchDelta = mouse.y * render::kMouseSensitivity + axis(KEY_UP, KEY_DOWN) * keyTurn;
@@ -45,5 +45,7 @@ CameraInput readCameraInput(float frameTime, bool useMouse) {
 }
 
 bool toggleMouseCapturePressed() { return IsKeyPressed(KEY_TAB); }
+
+bool interactPressed() { return IsKeyPressed(KEY_E); }
 
 } // namespace platform

@@ -10,6 +10,9 @@
 #include "Renderer.h"
 
 #include <cmath>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "RenderConfig.h"
 
@@ -103,12 +106,65 @@ void Renderer::drawNameLabels(const game::Game& game, const Camera3D& camera) co
 }
 
 void Renderer::drawHud(const game::Game& game) const {
+    // Help text on a light panel, so it stays readable over dark roofs.
+    DrawRectangle(0, 0, 820, 64, Color{255, 255, 255, 150});
     const game::Vec3 pos = game.player().position;
-    DrawText("Move: WASD    Camera: mouse, Q/E, arrows    Free mouse: Tab    Quit: Esc", 12, 12,
+    DrawText("Move: WASD   Camera: mouse, arrows   Talk: E   Free mouse: Tab   Quit: Esc", 12, 12,
              20, render::kHudTextColor);
     DrawText(TextFormat("Tile: x %d, z %d", static_cast<int>(pos.x), static_cast<int>(pos.z)), 12,
              38, 20, render::kHudTextColor);
     DrawFPS(render::kWindowWidth - 100, 12);
+
+    // While talking, show the dialogue box; otherwise, hint when someone is
+    // close enough to talk to.
+    if (const game::Npc* speaker = game.activeDialogue()) {
+        drawDialogue(*speaker);
+    } else if (const game::Npc* npc = game.npcInReach()) {
+        const std::string prompt = "Press E to talk to " + npc->name;
+        drawLabel(prompt.c_str(), render::kWindowWidth / 2,
+                  render::kWindowHeight - render::kDialogueBottomGap - 30, 22);
+    }
+}
+
+void Renderer::drawDialogue(const game::Npc& speaker) const {
+    using namespace render;
+    const int textWidth = kDialogueWidth - kDialoguePadding * 2;
+
+    // Split the line into rows that fit the box, breaking between words.
+    std::vector<std::string> rows;
+    std::string current;
+    std::istringstream words(speaker.line);
+    std::string word;
+    while (words >> word) {
+        const std::string candidate = current.empty() ? word : current + " " + word;
+        if (!current.empty() && MeasureText(candidate.c_str(), kDialogueTextFontSize) > textWidth) {
+            rows.push_back(current);
+            current = word;
+        } else {
+            current = candidate;
+        }
+    }
+    if (!current.empty()) {
+        rows.push_back(current);
+    }
+
+    // Box size grows with the number of rows.
+    const int rowHeight = kDialogueTextFontSize + 6;
+    const int height = kDialoguePadding * 2 + kDialogueNameFontSize + 10 +
+                       static_cast<int>(rows.size()) * rowHeight + 24;
+    const int left = (kWindowWidth - kDialogueWidth) / 2;
+    const int top = kWindowHeight - kDialogueBottomGap - height;
+    DrawRectangle(left, top, kDialogueWidth, height, kDialogueBackColor);
+
+    int y = top + kDialoguePadding;
+    DrawText(speaker.name.c_str(), left + kDialoguePadding, y, kDialogueNameFontSize,
+             kDialogueNameColor);
+    y += kDialogueNameFontSize + 10;
+    for (const std::string& row : rows) {
+        DrawText(row.c_str(), left + kDialoguePadding, y, kDialogueTextFontSize, kDialogueTextColor);
+        y += rowHeight;
+    }
+    DrawText("E: close", left + kDialoguePadding, y + 4, 18, kDialogueHintColor);
 }
 
 } // namespace platform

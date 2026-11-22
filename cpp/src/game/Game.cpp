@@ -92,6 +92,20 @@ const Npc* Game::npcInReach() const {
     return nearestNpcWithin(player_.position, data::kTalkRange);
 }
 
+void Game::interact() {
+    if (talkingTo_) {
+        talkingTo_.reset(); // E again closes the dialogue
+        return;
+    }
+    if (const Npc* npc = npcInReach()) {
+        talkingTo_ = static_cast<std::size_t>(npc - npcs_.data());
+    }
+}
+
+const Npc* Game::activeDialogue() const {
+    return talkingTo_ ? &npcs_[*talkingTo_] : nullptr;
+}
+
 void Game::step(const PlayerInput& input, float dt) {
     // Normalizing does two jobs: diagonal movement is not ~41% faster than
     // straight movement, and an oversized input can never speed the player
@@ -113,6 +127,12 @@ void Game::step(const PlayerInput& input, float dt) {
     const Vec3 delta = direction * (player_.speed * dt);
     moveAlongX(delta.x);
     moveAlongZ(delta.z);
+
+    // Walking out of talking range ends the conversation.
+    if (talkingTo_ &&
+        lengthXZ(npcs_[*talkingTo_].position - player_.position) > data::kTalkRange) {
+        talkingTo_.reset();
+    }
 }
 
 void Game::moveAlongX(float distance) {

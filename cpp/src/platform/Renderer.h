@@ -35,6 +35,10 @@ private:
     void drawNameLabels(const game::Game& game, const Camera3D& camera) const;
     void drawHud(const game::Game& game) const;
 
+    // The box at the bottom of the screen showing who is talking and their
+    // line, wrapped to fit.
+    void drawDialogue(const game::Npc& speaker) const;
+
     WorldMesh worldMesh_;
 };
 
