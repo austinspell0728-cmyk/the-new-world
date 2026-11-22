@@ -13,3 +13,7 @@
 
 # Never commit raylib itself; it is installed locally (see Makefile)
 raylib/
+
+# The full Medieval Village MegaKit download lives here locally (300+ MB).
+# Only the pieces the town uses are committed, in assets/medieval/.
+/assets/buildings/
