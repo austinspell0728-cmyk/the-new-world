@@ -8,9 +8,12 @@
 //   3. Update game   (game/Game, in fixed time steps)
 //   4. Aim camera at the player and draw (platform/CameraRig, Renderer)
 //
-// Optional: `new-world --screenshot build/shot.png` runs a short moment,
-// saves one frame to that file and quits. Handy for checking the view
-// without playing.
+// Optional flags (both ignore the mouse and keyboard camera controls):
+//   --screenshot build/shot.png  runs a short moment, saves one frame to
+//                                that file and quits; for checking the view.
+//   --benchmark                  draws as fast as possible (no 60 FPS cap)
+//                                for a few seconds, prints the average frame
+//                                rate and quits; for measuring render cost.
 
 #include <cstdlib>
 #include <cstring>
@@ -33,6 +36,7 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::strcmp(argv[1], "--screenshot") == 0) {
         screenshotPath = argv[2];
     }
+    const bool benchmark = (argc == 2 && std::strcmp(argv[1], "--benchmark") == 0);
 
     // Build the world before opening a window, so a broken map reports a
     // clear error instead of flashing an empty window.
@@ -47,13 +51,14 @@ int main(int argc, char** argv) {
 
     InitWindow(platform::render::kWindowWidth, platform::render::kWindowHeight,
                platform::render::kWindowTitle);
-    SetTargetFPS(platform::render::kTargetFps);
+    // 0 = no frame cap, so the benchmark measures how fast we can draw.
+    SetTargetFPS(benchmark ? 0 : platform::render::kTargetFps);
 
     // Hide and lock the mouse to the window so moving it orbits the camera
     // without the pointer leaving the screen. Esc still quits.
     // Screenshot mode skips this and ignores camera input, so the saved
     // image always shows the default view.
-    const bool interactive = (screenshotPath == nullptr);
+    const bool interactive = (screenshotPath == nullptr && !benchmark);
     bool mouseCaptured = false;
     // Frames of mouse movement to ignore. Right after capturing, the first
     // reported delta can include the jump to the window centre.
@@ -65,7 +70,7 @@ int main(int argc, char** argv) {
     }
 
     platform::CameraRig cameraRig;
-    const platform::Renderer renderer;
+    const platform::Renderer renderer(game.world());
 
     // Fixed time step: real elapsed time is collected in `accumulator`, and
     // the game advances in equal slices of kFixedTimeStep. Rendering can run
@@ -79,6 +84,7 @@ int main(int argc, char** argv) {
     constexpr float kMaxFrameTime = 0.25f;
 
     int frame = 0;
+    double benchmarkStart = 0.0;
     while (!WindowShouldClose()) { // Esc or the window's close button
         float frameTime = GetFrameTime();
         if (frameTime > kMaxFrameTime) {
@@ -129,6 +135,22 @@ int main(int argc, char** argv) {
         if (screenshotPath != nullptr && ++frame == 30) {
             TakeScreenshot(screenshotPath);
             break;
+        }
+
+        // Benchmark mode: skip a warm-up, then time a fixed number of frames.
+        if (benchmark) {
+            constexpr int kWarmupFrames = 60;
+            constexpr int kTimedFrames = 600;
+            ++frame;
+            if (frame == kWarmupFrames) {
+                benchmarkStart = GetTime();
+            } else if (frame == kWarmupFrames + kTimedFrames) {
+                const double seconds = GetTime() - benchmarkStart;
+                std::cout << "Benchmark: " << kTimedFrames << " frames in " << seconds
+                          << " s = " << (kTimedFrames / seconds) << " FPS ("
+                          << (seconds * 1000.0 / kTimedFrames) << " ms per frame)\n";
+                break;
+            }
         }
     }
 

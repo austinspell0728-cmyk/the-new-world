@@ -1,11 +1,11 @@
 // Renderer.cpp
 //
-// Placeholder 3D art: every tile and the player are simple flat-colored
+// Placeholder 3D art: the map and the player are simple flat-colored
 // shapes. Positions come straight from the game in tiles, which raylib
 // uses directly as its 3D units (1 tile = 1 unit).
 //
-// Tile (x, z) covers the ground square from (x, z) to (x + 1, z + 1), so
-// its centre is at (x + 0.5, z + 0.5).
+// The static map is pre-built into a single mesh (see WorldMesh); only
+// things that move are drawn shape by shape each frame.
 
 #include "Renderer.h"
 
@@ -17,30 +17,11 @@ namespace platform {
 
 namespace {
 
-// Picks the color for a tile type. Purely visual: whether a tile blocks
-// movement is decided by game::isSolid, not by its look.
-Color colorFor(game::Tile tile) {
-    switch (tile) {
-    case game::Tile::Grass: return render::kGrassColor;
-    case game::Tile::Path: return render::kPathColor;
-    case game::Tile::Water: return render::kWaterColor;
-    case game::Tile::Wall: return render::kWallColor;
-    }
-    return MAGENTA; // Bright "missing" color makes a forgotten tile type obvious.
-}
-
 Vector3 toRaylib(game::Vec3 v) { return {v.x, v.y, v.z}; }
 
-// Draws a box covering tile (x, z) whose top is at `topY` and whose
-// bottom is at `bottomY`.
-void drawTileBox(int x, int z, float bottomY, float topY, Color fill, Color edge) {
-    const float height = topY - bottomY;
-    const Vector3 centre{x + 0.5f, bottomY + height / 2.0f, z + 0.5f};
-    DrawCube(centre, 1.0f, height, 1.0f, fill);
-    DrawCubeWires(centre, 1.0f, height, 1.0f, edge);
-}
-
 } // namespace
+
+Renderer::Renderer(const game::World& world) : worldMesh_(world) {}
 
 void Renderer::draw(const game::Game& game, const CameraRig& cameraRig) const {
     BeginDrawing();
@@ -49,7 +30,7 @@ void Renderer::draw(const game::Game& game, const CameraRig& cameraRig) const {
     // Everything between BeginMode3D and EndMode3D is drawn in world space
     // and seen through the camera.
     BeginMode3D(cameraRig.camera());
-    drawWorld(game.world());
+    worldMesh_.draw();
     drawPlayer(game.player());
     EndMode3D();
 
@@ -57,38 +38,6 @@ void Renderer::draw(const game::Game& game, const CameraRig& cameraRig) const {
     drawHud(game);
 
     EndDrawing();
-}
-
-void Renderer::drawWorld(const game::World& world) const {
-    const float groundBottom = -render::kGroundThickness;
-
-    for (int z = 0; z < world.depth(); ++z) {
-        for (int x = 0; x < world.width(); ++x) {
-            const game::Tile tile = world.tileAt(x, z);
-            const Color fill = colorFor(tile);
-
-            switch (tile) {
-            case game::Tile::Grass:
-            case game::Tile::Path:
-                // Flat ground slab, top surface at y = 0.
-                drawTileBox(x, z, groundBottom, 0.0f, fill, render::kTileEdgeColor);
-                break;
-            case game::Tile::Water:
-                // Slab sunk a little below the ground, so the neighbouring
-                // ground tiles form a visible bank around the pool.
-                drawTileBox(x, z, groundBottom, -render::kWaterDepth, fill, render::kTileEdgeColor);
-                break;
-            case game::Tile::Wall:
-                // Box extruded up from below the ground to the wall height,
-                // plus a thin lighter cap. Without lighting every face would
-                // be the same color; the cap makes the wall tops stand out.
-                drawTileBox(x, z, groundBottom, render::kWallHeight, fill, render::kWallEdgeColor);
-                drawTileBox(x, z, render::kWallHeight, render::kWallHeight + 0.02f,
-                            render::kWallTopColor, render::kWallEdgeColor);
-                break;
-            }
-        }
-    }
 }
 
 void Renderer::drawPlayer(const game::Player& player) const {
