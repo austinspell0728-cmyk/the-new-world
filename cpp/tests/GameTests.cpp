@@ -18,6 +18,7 @@
 #include "../src/game/Game.h"
 #include "../src/game/GameData.h"
 #include "../src/game/World.h"
+#include "../src/game/WorldBuilder.h"
 // Raylib-free platform helper; safe to include in the test build.
 #include "../src/platform/CameraRelativeMove.h"
 
@@ -71,7 +72,8 @@ int main() {
     // --- Tests carried over from the 2D prototype ----------------------------
 
     run("Starting map loads and player spawns on a walkable tile", [] {
-        const game::World world = game::World::fromRows(game::data::kStartingMap);
+        // Now built from terrain + the town layout (was a single fixed map).
+        const game::World world = game::buildStartingWorld(game::data::kWorldSeed);
         const game::Vec3 start = world.playerStart();
         check(!game::isSolid(world.tileAt(static_cast<int>(start.x), static_cast<int>(start.z))),
               "spawn tile should be walkable");
@@ -294,6 +296,103 @@ int main() {
         hold(g, platform::cameraRelativeMove(1, 0, kPi / 2.0f + kPi / 6.0f), 6);
         check(near(g.player().position.x, pinnedX), "x should stay pinned to the wall");
         check(std::abs(g.player().position.z - startZ) > 0.1f, "player should slide along z");
+    });
+
+    // --- Town: buildings, props and the world builder ----------------------------
+
+    run("Buildings block movement and the player stops flush against them", [] {
+        game::Game g(game::World::fromRows(std::vector<std::string_view>{
+            "#######",
+            "#@..BB#",
+            "#...BB#",
+            "#######",
+        }));
+        hold(g, {1, 0}, 120);
+        const float rightEdge = g.player().position.x + g.player().halfSize;
+        check(rightEdge < 4.0f, "player must not enter the building at x = 4");
+        check(rightEdge > 3.99f, "player should end up touching the building");
+    });
+
+    run("Player slides along a building wall", [] {
+        game::Game g(game::World::fromRows(std::vector<std::string_view>{
+            "#######",
+            "#...BB#",
+            "#@..BB#",
+            "#.....#",
+            "#######",
+        }));
+        hold(g, {1, 0}, 120); // pin against the building's west face
+        const float pinnedX = g.player().position.x;
+        const float startZ = g.player().position.z;
+        hold(g, {1, 1}, 6);   // push into it while moving south, still beside it
+        check(near(g.player().position.x, pinnedX), "x should stay pinned to the building");
+        check(g.player().position.z > startZ, "player should slide south along the building");
+        hold(g, {1, 1}, 60);  // keep going: past the building's corner
+        check(g.player().position.x > pinnedX + 0.5f, "past the corner, east is open again");
+    });
+
+    run("Trees, stalls and the well block movement; plaza paving does not", [] {
+        for (const char prop : {'T', 'S', 'W'}) {
+            const std::string row = std::string("#@:") + prop + "#";
+            game::Game g(game::World::fromRows(std::vector<std::string>{"#####", row, "#####"}));
+            hold(g, {1, 0}, 120);
+            check(g.player().position.x + g.player().halfSize < 3.0f,
+                  std::string("player must not enter a '") + prop + "' tile");
+            check(g.player().position.x > 2.0f, "player should cross the walkable plaza tile");
+        }
+    });
+
+    run("Terrain is grass inside a border wall, the same for the same seed", [] {
+        const game::MapRows terrain = game::generateTerrain(7, 6, 4);
+        check(terrain.size() == 4 && terrain[0].size() == 6, "terrain should be 6 wide, 4 deep");
+        check(terrain[0] == "######" && terrain[3] == "######", "top and bottom rows are wall");
+        check(terrain[1] == "#....#" && terrain[2] == "#....#", "inside is grass, edges are wall");
+        check(terrain == game::generateTerrain(7, 6, 4), "same seed gives the same terrain");
+    });
+
+    run("Terrain rejects sizes too small to have an inside", [] {
+        bool threw = false;
+        try {
+            game::generateTerrain(1, 2, 5);
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+        check(threw, "a 2-wide terrain should be rejected");
+    });
+
+    run("Stamping a layout keeps terrain where the layout has spaces", [] {
+        game::MapRows rows = game::generateTerrain(1, 6, 5);
+        game::stampLayout(rows, {"B ", " @"}, 2, 1);
+        check(rows[1] == "#.B..#", "row 1: 'B' stamped at x = 2, space kept grass");
+        check(rows[2] == "#..@.#", "row 2: '@' stamped at x = 3");
+    });
+
+    run("Stamping rejects layouts that do not fit or have uneven rows", [] {
+        auto rejects = [](std::vector<std::string_view> layout, int ox, int oz) {
+            game::MapRows rows = game::generateTerrain(1, 5, 5);
+            try {
+                game::stampLayout(rows, layout, ox, oz);
+            } catch (const std::invalid_argument&) {
+                return true;
+            }
+            return false;
+        };
+        check(rejects({"BBB"}, 3, 1), "layout running off the east edge");
+        check(rejects({"B", "B"}, 1, 4), "layout running off the south edge");
+        check(rejects({"B"}, -1, 0), "negative offset");
+        check(rejects({"BB", "B"}, 1, 1), "uneven layout rows");
+    });
+
+    run("The town is stamped at its offset in the starting world", [] {
+        const game::World world = game::buildStartingWorld(game::data::kWorldSeed);
+        check(world.width() == game::data::kWorldWidth && world.depth() == game::data::kWorldDepth,
+              "world size comes from GameData");
+        // The well is at column 21, row 15 of the town layout.
+        check(world.tileAt(game::data::kTownOffsetX + 21, game::data::kTownOffsetZ + 15) ==
+                  game::Tile::Well,
+              "well should sit at its layout position plus the offset");
+        check(world.tileAt(1, 1) == game::Tile::Grass, "terrain shows outside the town");
+        check(world.tileAt(0, 0) == game::Tile::Wall, "terrain border wall is kept");
     });
 
     if (failures > 0) {

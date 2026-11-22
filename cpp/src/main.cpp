@@ -25,6 +25,7 @@
 #include "game/Game.h"
 #include "game/GameData.h"
 #include "game/World.h"
+#include "game/WorldBuilder.h"
 #include "platform/CameraRig.h"
 #include "platform/InputReader.h"
 #include "platform/RenderConfig.h"
@@ -42,7 +43,8 @@ int main(int argc, char** argv) {
     // clear error instead of flashing an empty window.
     game::Game game = [] {
         try {
-            return game::Game(game::World::fromRows(game::data::kStartingMap));
+            // Terrain from the seed, then the hand-made town (WorldBuilder.h).
+            return game::Game(game::buildStartingWorld(game::data::kWorldSeed));
         } catch (const std::exception& error) {
             std::cerr << "Failed to load the world: " << error.what() << '\n';
             std::exit(1);

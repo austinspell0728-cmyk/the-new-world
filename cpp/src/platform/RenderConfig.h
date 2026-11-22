@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include <array>
+
 #include "raylib.h"
 
 namespace platform::render {
@@ -61,6 +63,18 @@ constexpr float kWaterDepth = 0.15f;
 // Walls are boxes extruded upwards from the ground.
 constexpr float kWallHeight = 2.0f;
 
+// Buildings are boxes too, a bit taller than walls. Doors are drawn where a
+// path or the plaza touches a building's side.
+constexpr float kBuildingHeight = 2.6f;
+constexpr float kDoorWidth = 0.5f;
+constexpr float kDoorHeight = 1.3f;
+
+// Without lighting, every face of a box would be the same color. Vertical
+// faces are darkened by these factors (east/west and north/south) so the
+// shape of walls, buildings and props reads clearly. 1.0 = no change.
+constexpr float kShadeFacingX = 0.88f;
+constexpr float kShadeFacingZ = 0.76f;
+
 // --- Colors ------------------------------------------------------------------
 
 constexpr Color kGrassColor = {86, 140, 72, 255};
@@ -70,6 +84,37 @@ constexpr Color kWallColor = {120, 114, 124, 255};
 constexpr Color kWallTopColor = {168, 162, 172, 255}; // lighter cap so wall shapes read clearly
 constexpr Color kWallEdgeColor = {60, 56, 64, 255};
 constexpr Color kTileEdgeColor = {0, 0, 0, 40}; // faint grid on the ground
+constexpr Color kPlazaColor = {178, 170, 152, 255};
+
+// Each building gets one wall color and one roof color, picked in turn from
+// these lists so neighbouring buildings look different.
+constexpr std::array<Color, 4> kBuildingWallColors = {{
+    {222, 206, 170, 255}, // cream plaster
+    {196, 160, 120, 255}, // ochre
+    {204, 190, 180, 255}, // pale stone
+    {170, 128, 100, 255}, // brick-ish
+}};
+constexpr std::array<Color, 3> kBuildingRoofColors = {{
+    {150, 70, 56, 255},  // red tiles
+    {96, 92, 104, 255},  // slate
+    {118, 86, 58, 255},  // thatch brown
+}};
+constexpr Color kBuildingEdgeColor = {50, 40, 36, 255};
+constexpr Color kDoorColor = {84, 54, 34, 255};
+
+// Props (placeholder shapes).
+constexpr Color kTrunkColor = {104, 72, 46, 255};
+constexpr Color kLeafColor = {52, 112, 58, 255};
+constexpr Color kLeafTopColor = {70, 136, 70, 255};
+constexpr Color kStallWoodColor = {140, 100, 64, 255};
+constexpr std::array<Color, 3> kAwningColors = {{
+    {196, 68, 60, 255},  // red
+    {64, 110, 180, 255}, // blue
+    {222, 178, 64, 255}, // yellow
+}};
+constexpr Color kStoneColor = {150, 146, 140, 255};
+constexpr Color kWellWaterColor = {30, 54, 90, 255};
+constexpr Color kPropEdgeColor = {0, 0, 0, 70};
 
 constexpr Color kPlayerColor = {232, 196, 92, 255};
 constexpr Color kPlayerNoseColor = {60, 40, 25, 255}; // shows which way the player faces

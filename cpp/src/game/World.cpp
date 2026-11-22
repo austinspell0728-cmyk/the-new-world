@@ -5,6 +5,7 @@
 
 #include "World.h"
 
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -15,9 +16,14 @@ bool isSolid(Tile tile) {
     switch (tile) {
     case Tile::Wall:
     case Tile::Water:
+    case Tile::Building:
+    case Tile::Tree:
+    case Tile::Stall:
+    case Tile::Well:
         return true;
     case Tile::Grass:
     case Tile::Path:
+    case Tile::Plaza:
         return false;
     }
     return true; // Unreachable for valid enums; treat unknown as solid to be safe.
@@ -54,6 +60,11 @@ World World::fromRows(const std::vector<std::string_view>& rows) {
             case '~': tiles.push_back(Tile::Water); break;
             case '.': tiles.push_back(Tile::Grass); break;
             case ',': tiles.push_back(Tile::Path); break;
+            case ':': tiles.push_back(Tile::Plaza); break;
+            case 'B': tiles.push_back(Tile::Building); break;
+            case 'T': tiles.push_back(Tile::Tree); break;
+            case 'S': tiles.push_back(Tile::Stall); break;
+            case 'W': tiles.push_back(Tile::Well); break;
             case '@':
                 // The start marker is ordinary walkable ground. The player
                 // spawns in the centre of the tile (hence + 0.5), standing
@@ -74,6 +85,10 @@ World World::fromRows(const std::vector<std::string_view>& rows) {
     }
 
     return World(width, depth, std::move(tiles), playerStart);
+}
+
+bool World::isWalkableAt(float x, float z) const {
+    return !isSolid(tileAt(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(z))));
 }
 
 Tile World::tileAt(int x, int z) const {
