@@ -67,6 +67,23 @@ BuildingMap findBuildings(const game::World& world) {
     return map;
 }
 
+const BuildingRoof* chooseRoof(const Footprint& f, const std::vector<BuildingRoof>& roofs) {
+    const float across = static_cast<float>(std::min(f.width, f.depth));
+    const float along = static_cast<float>(std::max(f.width, f.depth));
+    const BuildingRoof* best = nullptr;
+    float bestStretch = 0.0f;
+    for (const BuildingRoof& roof : roofs) {
+        // log() makes stretching by 2 and squashing by 2 count the same.
+        const float stretch = std::abs(std::log(across / static_cast<float>(roof.fitsAcross))) +
+                              std::abs(std::log(along / static_cast<float>(roof.fitsAlong)));
+        if (best == nullptr || stretch < bestStretch - 1e-6f) {
+            best = &roof;
+            bestStretch = stretch;
+        }
+    }
+    return best;
+}
+
 std::vector<PlacedBuilding> matchBuildings(const BuildingMap& map, const BuildingData& data) {
     std::vector<PlacedBuilding> placed;
     std::vector<int> claimedBy(map.footprints.size(), 0); // line of the entry using it, 0 = free
@@ -89,11 +106,17 @@ std::vector<PlacedBuilding> matchBuildings(const BuildingMap& map, const Buildin
                  " is not a plain rectangle, and only rectangles can be assembled from wall panels");
         }
         claimedBy[index] = entry.line;
+        // parseBuildings already checks these names; checked again for safety.
         const BuildingStyle* style = data.findStyle(entry.style);
-        if (style == nullptr) { // parseBuildings already checks this; kept for safety
+        if (style == nullptr) {
             fail("unknown style '" + entry.style + "'");
         }
-        placed.push_back({index, entry, *style});
+        const BuildingRoof* roof = entry.roof.empty() ? chooseRoof(map.footprints[index], data.roofs)
+                                                      : data.findRoof(entry.roof);
+        if (roof == nullptr) {
+            fail(entry.roof.empty() ? "there is no [roof] to put on this building" : "unknown roof '" + entry.roof + "'");
+        }
+        placed.push_back({index, entry, *style, *roof});
     }
     return placed;
 }
@@ -148,7 +171,7 @@ int findDoorTile(const game::World& world, const Footprint& f, int facingDegrees
 }
 
 std::vector<PiecePlacement> planBuilding(const Footprint& f, const BuildingStyle& style,
-                                         const BuildingEntry& entry, int doorTile) {
+                                         const BuildingRoof& roof, const BuildingEntry& entry, int doorTile) {
     std::vector<PiecePlacement> pieces;
     const float height = style.heightScale;
     auto add = [&](Piece piece, float x, float y, float z, float yaw, float sx, float sy, float sz) {
@@ -185,8 +208,13 @@ std::vector<PiecePlacement> planBuilding(const Footprint& f, const BuildingStyle
                 const float lx = kit::kDoorLeafX * stretch, lz = kit::kDoorLeafZ;
                 add(Piece::DoorLeaf, x + lx * std::cos(yawRad) + lz * std::sin(yawRad), 0.0f,
                     z - lx * std::sin(yawRad) + lz * std::cos(yawRad), yaw, stretch, height, 1.0f);
+            } else if (i % 2 == 0) {
+                add(Piece::Window, x, 0.0f, z, yaw, stretch, height, 1.0f);
+                // The frame shares the panel's origin, so it drops straight
+                // into the opening.
+                add(Piece::WindowFrame, x, 0.0f, z, yaw, stretch, height, 1.0f);
             } else {
-                add(i % 2 == 0 ? Piece::Window : Piece::Wall, x, 0.0f, z, yaw, stretch, height, 1.0f);
+                add(Piece::Wall, x, 0.0f, z, yaw, stretch, height, 1.0f);
             }
         }
     }
@@ -198,18 +226,27 @@ std::vector<PiecePlacement> planBuilding(const Footprint& f, const BuildingStyle
         add(Piece::Corner, cx, 0.0f, cz, 0.0f, 1.0f, height, 1.0f);
     }
 
-    // Roof: stretched from the footprint it was made for to this one. If
-    // the building is long the other way from the roof, turn the roof 90
-    // degrees; then its own X runs along the world's Z.
-    const bool buildingLongInX = f.width > f.depth;
-    const bool roofLongInX = style.roofFitsX > style.roofFitsZ;
-    const bool turn = (f.width != f.depth) && (style.roofFitsX != style.roofFitsZ) &&
-                      (buildingLongInX != roofLongInX);
-    const float alongModelX = static_cast<float>(turn ? f.depth : f.width);
-    const float alongModelZ = static_cast<float>(turn ? f.width : f.depth);
-    add(Piece::Roof, (x0 + x1) / 2.0f, kit::kWallTop * height, (z0 + z1) / 2.0f, turn ? 90.0f : 0.0f,
-        alongModelX / static_cast<float>(style.roofFitsX), height,
-        alongModelZ / static_cast<float>(style.roofFitsZ));
+    // Roof: its ridge runs along its own Z, and goes along the building's
+    // longer side, so turn it 90 degrees when the building is longer in X.
+    // Then it is stretched from the footprint it was made for to this one.
+    const bool ridgeAlongX = f.width > f.depth;
+    const float across = static_cast<float>(ridgeAlongX ? f.depth : f.width);
+    const float along = static_cast<float>(ridgeAlongX ? f.width : f.depth);
+    const float roofScaleAcross = across / static_cast<float>(roof.fitsAcross);
+    const float roofScaleAlong = along / static_cast<float>(roof.fitsAlong);
+    const float centreX = (x0 + x1) / 2.0f, centreZ = (z0 + z1) / 2.0f;
+    const float roofY = kit::kWallTop * height;
+    add(Piece::Roof, centreX, roofY, centreZ, ridgeAlongX ? 90.0f : 0.0f, roofScaleAcross, height, roofScaleAlong);
+
+    // Gables: the triangles under each end of the ridge, standing on the
+    // end walls and facing out, stretched across like the roof.
+    if (ridgeAlongX) {
+        add(Piece::Gable, x1, roofY, centreZ, 90.0f, roofScaleAcross, height, 1.0f);
+        add(Piece::Gable, x0, roofY, centreZ, 270.0f, roofScaleAcross, height, 1.0f);
+    } else {
+        add(Piece::Gable, centreX, roofY, z1, 0.0f, roofScaleAcross, height, 1.0f);
+        add(Piece::Gable, centreX, roofY, z0, 180.0f, roofScaleAcross, height, 1.0f);
+    }
 
     return pieces;
 }

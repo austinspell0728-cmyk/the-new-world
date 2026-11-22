@@ -112,11 +112,26 @@ bool buildingTextFails(const std::string& text, const std::string& expected) {
     return false;
 }
 
-// A complete [style] block named `name`: 10 lines, starting with "[style]".
+// A complete [style] block named `name`: 9 lines, starting with "[style]".
 std::string styleBlock(const std::string& name) {
     return "[style]\nname = " + name +
-           "\nwall = w.gltf\nwindow = win.gltf\ndoor = d.gltf\ndoor_leaf = leaf.gltf\n"
-           "corner = c.gltf\nroof = r.gltf\nroof_fits = 6, 8\n\n";
+           "\nwall = w.gltf\nwindow = win.gltf\nwindow_frame = frame.gltf\ndoor = d.gltf\n"
+           "door_leaf = leaf.gltf\ncorner = c.gltf\n\n";
+}
+
+// A complete [roof] block: 6 lines, starting with "[roof]".
+std::string roofBlock(const std::string& name, int across, int along) {
+    return "[roof]\nname = " + name + "\nmodel = " + name + ".gltf\ngable = g.gltf\nfits = " +
+           std::to_string(across) + ", " + std::to_string(along) + "\n\n";
+}
+
+// A roof made for `across` x `along` tiles, for layout tests.
+platform::BuildingRoof roofFits(int across, int along, const std::string& name = "roof") {
+    platform::BuildingRoof roof;
+    roof.name = name;
+    roof.fitsAcross = across;
+    roof.fitsAlong = along;
+    return roof;
 }
 
 } // namespace
@@ -609,91 +624,122 @@ int main() {
     });
 
     // --- Building data file (data/buildings.txt) -----------------------------
+    // styleBlock() is lines 1-9 of a text, roofBlock() 6 lines more.
 
-    run("Building text reads styles and buildings", [] {
+    run("Building text reads styles, roofs and buildings", [] {
         const platform::BuildingData data = parseBuildingText(
-            "# a comment\n" + styleBlock("plaster") +
-            "[style]\nname = tall\nwall = w2.gltf\nwindow = win2.gltf\ndoor = d2.gltf\n"
-            "door_leaf = leaf2.gltf\ncorner = c2.gltf\nroof = r2.gltf\nroof_fits = 4, 4\nscale = 1.5\n"
+            "# a comment\n" + styleBlock("plaster") +                       // lines 1-10
+            "[style]\nname = tall\nwall = w2.gltf\nwindow = win2.gltf\nwindow_frame = f2.gltf\n"
+            "door = d2.gltf\ndoor_leaf = leaf2.gltf\ncorner = c2.gltf\nscale = 1.5\n" // lines 11-19
+            "[roof]\nname = tiles\nmodel = roof.gltf\ngable = gable.gltf\nfits = 4, 6\n"  // lines 20-24
             "[building]\ntile = 29, 24\nstyle = plaster\nfacing = 180\n"
-            "[building]\ntile = 3, 4\nstyle = tall\nfacing = 90\noffset = 0.5, -0.1, 0\n");
+            "[building]\ntile = 3, 4\nstyle = tall\nfacing = 90\noffset = 0.5, -0.1, 0\nroof = tiles\n");
         check(data.source == "test", "source name kept for later errors");
-        check(data.styles.size() == 2 && data.buildings.size() == 2, "two styles, two buildings");
+        check(data.styles.size() == 2 && data.roofs.size() == 1 && data.buildings.size() == 2,
+              "two styles, one roof, two buildings");
 
         const platform::BuildingStyle& plaster = data.styles[0];
         check(plaster.name == "plaster" && plaster.wall == "w.gltf" && plaster.window == "win.gltf" &&
-                  plaster.door == "d.gltf" && plaster.doorLeaf == "leaf.gltf" &&
-                  plaster.corner == "c.gltf" && plaster.roof == "r.gltf",
+                  plaster.windowFrame == "frame.gltf" && plaster.door == "d.gltf" &&
+                  plaster.doorLeaf == "leaf.gltf" && plaster.corner == "c.gltf",
               "every piece file read");
-        check(plaster.roofFitsX == 6 && plaster.roofFitsZ == 8, "roof_fits read as x, z");
         check(near(plaster.heightScale, 1.0f), "scale defaults to 1");
         check(plaster.line == 2, "style remembers its line");
         check(near(data.styles[1].heightScale, 1.5f), "scale read");
 
+        const platform::BuildingRoof& roof = data.roofs[0];
+        check(roof.name == "tiles" && roof.model == "roof.gltf" && roof.gable == "gable.gltf" &&
+                  roof.fitsAcross == 4 && roof.fitsAlong == 6 && roof.line == 20,
+              "roof read");
+
         const platform::BuildingEntry& first = data.buildings[0];
         check(first.tileX == 29 && first.tileZ == 24 && first.style == "plaster" &&
-                  first.facingDegrees == 180,
-              "first building read");
+                  first.facingDegrees == 180 && first.roof.empty(),
+              "first building read, no roof named");
         check(near(first.offsetX, 0) && near(first.offsetY, 0) && near(first.offsetZ, 0),
               "offset defaults to 0, 0, 0");
         const platform::BuildingEntry& second = data.buildings[1];
         check(second.facingDegrees == 90 && near(second.offsetX, 0.5f) && near(second.offsetY, -0.1f) &&
-                  near(second.offsetZ, 0.0f),
-              "second building read with offset");
+                  near(second.offsetZ, 0.0f) && second.roof == "tiles",
+              "second building read with offset and roof");
     });
 
-    run("Building styles are looked up by name", [] {
-        const platform::BuildingData data = parseBuildingText(styleBlock("plaster") + styleBlock("brick"));
+    run("Building styles and roofs are looked up by name", [] {
+        const platform::BuildingData data = parseBuildingText(
+            styleBlock("plaster") + styleBlock("brick") + roofBlock("small", 4, 6) + roofBlock("big", 6, 8));
         const platform::BuildingStyle* brick = data.findStyle("brick");
         check(brick != nullptr && brick->name == "brick", "brick found");
         check(data.findStyle("plaster") == &data.styles[0], "plaster found");
         check(data.findStyle("Brick") == nullptr, "names are case-sensitive");
-        check(data.findStyle("stone") == nullptr, "unknown name gives nullptr");
+        check(data.findStyle("stone") == nullptr, "unknown style gives nullptr");
+        const platform::BuildingRoof* big = data.findRoof("big");
+        check(big != nullptr && big->fitsAcross == 6 && big->fitsAlong == 8, "roof found");
+        check(data.findRoof("plaster") == nullptr, "styles and roofs have separate names");
     });
 
-    run("A building may use a style defined later in the file", [] {
-        const platform::BuildingData data =
-            parseBuildingText("[building]\ntile = 1, 1\nstyle = late\nfacing = 0\n" + styleBlock("late"));
-        check(data.buildings.size() == 1 && data.findStyle(data.buildings[0].style) != nullptr,
-              "forward reference resolved");
+    run("A building may use a style and roof defined later in the file", [] {
+        const platform::BuildingData data = parseBuildingText(
+            "[building]\ntile = 1, 1\nstyle = late\nfacing = 0\nroof = later\n" + styleBlock("late") +
+            roofBlock("later", 4, 6));
+        check(data.buildings.size() == 1 && data.findStyle(data.buildings[0].style) != nullptr &&
+                  data.findRoof(data.buildings[0].roof) != nullptr,
+              "forward references resolved");
     });
 
     run("The real data/buildings.txt is valid", [] {
         // make test runs from cpp/, like make run.
         const platform::BuildingData data = platform::loadBuildingFile("data/buildings.txt");
-        check(!data.styles.empty() && !data.buildings.empty(), "has styles and buildings");
+        check(!data.styles.empty() && !data.roofs.empty() && !data.buildings.empty(),
+              "has styles, roofs and buildings");
         for (const platform::BuildingEntry& b : data.buildings) {
             check(data.findStyle(b.style) != nullptr, "style '" + b.style + "' exists");
         }
+        // And every listed tile really is one of the town's buildings.
+        const platform::BuildingMap map =
+            platform::findBuildings(game::buildStartingWorld(game::data::kWorldSeed));
+        check(platform::matchBuildings(map, data).size() == data.buildings.size(), "every entry matches");
     });
 
     run("Bad building text is reported with file and line", [] {
-        const std::string style = styleBlock("plaster"); // lines 1-10
-        check(buildingTextFails("wall = w.gltf\n", "test:1: 'wall = w.gltf' must come after a [style] or [building] line"),
+        const std::string style = styleBlock("plaster");  // lines 1-9
+        const std::string roof = roofBlock("r", 6, 8);   // lines 10-15 after the style
+        const auto building = [](const std::string& extra) {
+            return "[building]\ntile = 1, 1\nstyle = plaster\nfacing = 0\n" + extra;
+        };
+        check(buildingTextFails("wall = w.gltf\n",
+                                "test:1: 'wall = w.gltf' must come after a [style], [roof] or [building] line"),
               "key before any section");
         check(buildingTextFails("[house]\n", "test:1: unknown section '[house]'"), "unknown section");
-        check(buildingTextFails("[style]\njust words\n", "test:2: expected '[style]', '[building]' or 'key = value'"),
+        check(buildingTextFails("[style]\njust words\n", "test:2: expected a [section] or 'key = value'"),
               "stray text");
         check(buildingTextFails("[style]\ncolour = red\n", "test:2: unknown key 'colour' in [style]"),
               "unknown style key");
-        check(buildingTextFails("[building]\nroof = r.gltf\n", "test:2: unknown key 'roof' in [building]"),
-              "style key in a building");
+        check(buildingTextFails("[roof]\nwall = w.gltf\n", "test:2: unknown key 'wall' in [roof]"),
+              "style key in a roof");
+        check(buildingTextFails("[building]\nmodel = r.gltf\n", "test:2: unknown key 'model' in [building]"),
+              "roof key in a building");
         check(buildingTextFails("[style]\nname = a\nname = b\n", "test:3: 'name' is set twice in the same [style]"),
               "repeated key");
         check(buildingTextFails("[style]\nwall =\n", "test:2: 'wall' has no value"), "empty value");
         check(buildingTextFails("\n\n[style]\nname = a\n", "test:3: [style] is missing 'wall'"),
               "missing style key reported at the [style] line");
-        check(buildingTextFails(style + "[building]\ntile = 1, 1\nstyle = plaster\n",
-                                "test:11: [building] is missing 'facing'"),
+        check(buildingTextFails("[roof]\nname = r\nmodel = m.gltf\nfits = 4, 6\n", "test:1: [roof] is missing 'gable'"),
+              "missing roof key reported at the [roof] line");
+        check(buildingTextFails(style + roof + "[building]\ntile = 1, 1\nstyle = plaster\n",
+                                "test:16: [building] is missing 'facing'"),
               "missing building key reported at the [building] line");
-        check(buildingTextFails(style + style, "test:11: style 'plaster' is defined twice"),
+        check(buildingTextFails(style + style, "test:10: style 'plaster' is defined twice"),
               "duplicate style name");
-        check(buildingTextFails(style + "[building]\ntile = 1, 1\nstyle = brick\nfacing = 0\n",
-                                "test:13: unknown style 'brick'"),
+        check(buildingTextFails(roof + roof, "test:7: roof 'r' is defined twice"), "duplicate roof name");
+        check(buildingTextFails(style + roof + "[building]\ntile = 1, 1\nstyle = brick\nfacing = 0\n",
+                                "test:18: unknown style 'brick'"),
               "unknown style reported at its style line");
-        check(buildingTextFails(style + "[building]\ntile = 1, 1\nstyle = plaster\nfacing = 0\n"
-                                        "[building]\ntile = 1, 1\nstyle = plaster\nfacing = 90\n",
-                                "test:15: tile 1, 1 is already used by the [building] on line 11"),
+        check(buildingTextFails(style + roof + building("roof = slate\n"), "test:20: unknown roof 'slate'"),
+              "unknown roof reported at its roof line");
+        check(buildingTextFails(style + building(""), "test:10: there are buildings but no [roof] for them"),
+              "buildings with no roofs at all");
+        check(buildingTextFails(style + roof + building("") + building(""),
+                                "test:20: tile 1, 1 is already used by the [building] on line 16"),
               "two buildings on the same tile");
 
         // Bad values.
@@ -711,10 +757,12 @@ int main() {
               "offset with 2 numbers");
         check(buildingTextFails("[building]\noffset = 0, up, 0\n", "offset must be three numbers"),
               "offset with a word");
-        check(buildingTextFails("[style]\nroof_fits = 6\n", "test:2: roof_fits must be two whole numbers"),
-              "roof_fits with 1 number");
-        check(buildingTextFails("[style]\nroof_fits = 0, 8\n", "roof_fits must be two whole numbers of at least 1"),
-              "roof_fits of 0");
+        check(buildingTextFails("[roof]\nfits = 6\n", "test:2: fits must be two whole numbers"),
+              "fits with 1 number");
+        check(buildingTextFails("[roof]\nfits = 0, 8\n", "fits must be two whole numbers of at least 1"),
+              "fits of 0");
+        check(buildingTextFails("[roof]\nfits = 4.5, 8\n", "fits must be two whole numbers of at least 1"),
+              "fits with a fraction");
         check(buildingTextFails("[style]\nscale = 0\n", "test:2: scale must be more than 0"), "scale of 0");
         check(buildingTextFails("[style]\nscale = big\n", "scale must be a number"), "scale as a word");
     });
@@ -757,15 +805,20 @@ int main() {
 
     run("Building entries are matched to buildings, with file and line errors", [&] {
         const platform::BuildingMap map = platform::findBuildings(layoutTestWorld());
-        const std::string style = styleBlock("s"); // lines 1-10
-        const auto entry = [](int x, int z) {
+        // Lines 1-9 style, 10-15 roof "wide", 16-21 roof "narrow"; entries from line 22.
+        const std::string header = styleBlock("s") + roofBlock("wide", 6, 8) + roofBlock("narrow", 2, 4);
+        const auto entry = [](int x, int z, const std::string& extra = "") {
             return "[building]\ntile = " + std::to_string(x) + ", " + std::to_string(z) +
-                   "\nstyle = s\nfacing = 0\n";
+                   "\nstyle = s\nfacing = 0\n" + extra;
         };
         const std::vector<platform::PlacedBuilding> placed =
-            platform::matchBuildings(map, parseBuildingText(style + entry(5, 3)));
+            platform::matchBuildings(map, parseBuildingText(header + entry(5, 3)));
         check(placed.size() == 1 && placed[0].building == 0 && placed[0].style.name == "s",
               "any tile of A picks A");
+        check(placed[0].roof.name == "narrow", "A (4x2) gets the closest roof, narrow (2x4)");
+        check(platform::matchBuildings(map, parseBuildingText(header + entry(5, 3, "roof = wide\n")))[0].roof.name ==
+                  "wide",
+              "a named roof wins over the closest one");
 
         const auto matchFails = [&](const std::string& text, const std::string& expected) {
             try {
@@ -778,15 +831,31 @@ int main() {
             }
             return false;
         };
-        check(matchFails(style + entry(1, 1), "test:11: tile 1, 1 is not part of a building"),
+        check(matchFails(header + entry(1, 1), "test:22: tile 1, 1 is not part of a building"),
               "tile that is not a building");
-        check(matchFails(style + entry(99, 99), "test:11: tile 99, 99 is not part of a building"),
+        check(matchFails(header + entry(99, 99), "test:22: tile 99, 99 is not part of a building"),
               "tile outside the world");
-        check(matchFails(style + entry(2, 2) + entry(5, 3),
-                         "test:15: tile 5, 3 is the same building as the [building] on line 11"),
+        check(matchFails(header + entry(2, 2) + entry(5, 3),
+                         "test:26: tile 5, 3 is the same building as the [building] on line 22"),
               "two entries for one building");
-        check(matchFails(style + entry(7, 4), "test:11: the building at tile 7, 4 is not a plain rectangle"),
+        check(matchFails(header + entry(7, 4), "test:22: the building at tile 7, 4 is not a plain rectangle"),
               "L-shaped building");
+    });
+
+    run("Each town footprint gets the roof that needs the least stretching", [] {
+        const std::vector<platform::BuildingRoof> roofs = {
+            roofFits(4, 6, "4x6"), roofFits(4, 8, "4x8"), roofFits(6, 6, "6x6"), roofFits(6, 8, "6x8")};
+        const auto pick = [&](int w, int d) { return platform::chooseRoof({0, 0, w, d, true}, roofs)->name; };
+        check(pick(8, 6) == "6x8" && pick(6, 8) == "6x8", "8x6 either way round: 6x8 exactly");
+        check(pick(6, 6) == "6x6", "6x6 exactly");
+        check(pick(6, 4) == "4x6", "6x4: 4x6 exactly");
+        check(pick(6, 5) == "6x6", "6x5: 6x6 (squash 5/6) beats 4x6 (stretch 5/4)");
+        check(pick(7, 4) == "4x8", "7x4: 4x8 (squash 7/8) beats 4x6 (stretch 7/6)");
+        check(pick(7, 5) == "6x8", "7x5: 6x8");
+        check(pick(7, 6) == "6x8", "7x6: 6x8");
+        check(platform::chooseRoof({0, 0, 6, 6, true}, {}) == nullptr, "no roofs: nullptr");
+        const std::vector<platform::BuildingRoof> twins = {roofFits(6, 6, "first"), roofFits(6, 6, "second")};
+        check(platform::chooseRoof({0, 0, 6, 6, true}, twins)->name == "first", "a tie goes to the first listed");
     });
 
     run("The door goes where a path meets the door side", [&] {
@@ -799,12 +868,7 @@ int main() {
 
     // The town's biggest building: 8 x 6 tiles at (29, 24), door to the north.
     const platform::Footprint big{29, 24, 8, 6, true};
-    const auto styleFits = [](int fx, int fz) {
-        platform::BuildingStyle s;
-        s.roofFitsX = fx;
-        s.roofFitsZ = fz;
-        return s;
-    };
+    const platform::BuildingStyle anyStyle;
     const auto facingEntry = [](int facing) {
         platform::BuildingEntry e;
         e.facingDegrees = facing;
@@ -817,30 +881,43 @@ int main() {
         }
         return n;
     };
-    const auto firstOf = [](const std::vector<platform::PiecePlacement>& pieces, platform::Piece kind) {
+    const auto allOf = [](const std::vector<platform::PiecePlacement>& pieces, platform::Piece kind) {
+        std::vector<platform::PiecePlacement> found;
         for (const platform::PiecePlacement& p : pieces) {
             if (p.piece == kind) {
-                return p;
+                found.push_back(p);
             }
         }
-        return platform::PiecePlacement{};
+        return found;
+    };
+    const auto firstOf = [&](const std::vector<platform::PiecePlacement>& pieces, platform::Piece kind) {
+        const auto found = allOf(pieces, kind);
+        return found.empty() ? platform::PiecePlacement{} : found.front();
+    };
+    const auto isPanel = [](const platform::PiecePlacement& p) {
+        return p.piece == platform::Piece::Wall || p.piece == platform::Piece::Window ||
+               p.piece == platform::Piece::Door;
     };
 
-    run("An 8x6 building gets 14 wall panels, one door, four corners and a roof", [&] {
-        const auto pieces = platform::planBuilding(big, styleFits(6, 8), facingEntry(180), 32);
-        const int panels = countOf(pieces, platform::Piece::Wall) + countOf(pieces, platform::Piece::Window) +
-                           countOf(pieces, platform::Piece::Door);
+    run("An 8x6 building gets 14 wall panels, windows, a door, corners, a roof and gables", [&] {
+        const auto pieces = platform::planBuilding(big, anyStyle, roofFits(6, 8), facingEntry(180), 32);
+        int panels = 0;
+        for (const platform::PiecePlacement& p : pieces) {
+            panels += isPanel(p) ? 1 : 0;
+        }
         check(panels == 14, "4 + 4 panels on the 8-tile sides, 3 + 3 on the 6-tile sides");
         check(countOf(pieces, platform::Piece::Door) == 1 && countOf(pieces, platform::Piece::DoorLeaf) == 1,
               "one door and its leaf");
-        check(countOf(pieces, platform::Piece::Corner) == 4 && countOf(pieces, platform::Piece::Roof) == 1,
-              "four corners, one roof");
+        check(countOf(pieces, platform::Piece::Window) == 8 && countOf(pieces, platform::Piece::WindowFrame) == 8,
+              "panels 0 and 2 of each side are windows, each with a frame");
+        check(countOf(pieces, platform::Piece::Corner) == 4 && countOf(pieces, platform::Piece::Roof) == 1 &&
+                  countOf(pieces, platform::Piece::Gable) == 2,
+              "four corners, one roof, two gables");
 
         // Every panel stands on the footprint's edge, facing out.
         bool onEdges = true;
         for (const platform::PiecePlacement& p : pieces) {
-            if (p.piece == platform::Piece::Wall || p.piece == platform::Piece::Window ||
-                p.piece == platform::Piece::Door) {
+            if (isPanel(p)) {
                 const bool northSouth = (near(p.z, 24) && near(p.yawDegrees, 180)) || (near(p.z, 30) && near(p.yawDegrees, 0));
                 const bool eastWest = (near(p.x, 37) && near(p.yawDegrees, 90)) || (near(p.x, 29) && near(p.yawDegrees, 270));
                 onEdges = onEdges && (northSouth || eastWest) && near(p.y, 0) && near(p.scaleX, 1.0f);
@@ -849,8 +926,20 @@ int main() {
         check(onEdges, "panels on the edges, facing outward, 2 tiles each (no stretch)");
     });
 
+    run("Window frames sit exactly in their window panels", [&] {
+        const auto pieces = platform::planBuilding({0, 0, 7, 5, true}, anyStyle, roofFits(6, 8), facingEntry(0), -1);
+        const auto windows = allOf(pieces, platform::Piece::Window);
+        const auto frames = allOf(pieces, platform::Piece::WindowFrame);
+        bool matched = !windows.empty() && windows.size() == frames.size();
+        for (std::size_t i = 0; matched && i < windows.size(); ++i) {
+            matched = near(windows[i].x, frames[i].x) && near(windows[i].z, frames[i].z) &&
+                      near(windows[i].yawDegrees, frames[i].yawDegrees) && near(windows[i].scaleX, frames[i].scaleX);
+        }
+        check(matched, "same position, turn and stretch as the panel");
+    });
+
     run("The door panel faces its path and the leaf sits inside the doorway", [&] {
-        const auto pieces = platform::planBuilding(big, styleFits(6, 8), facingEntry(180), 32);
+        const auto pieces = platform::planBuilding(big, anyStyle, roofFits(6, 8), facingEntry(180), 32);
         const platform::PiecePlacement door = firstOf(pieces, platform::Piece::Door);
         check(near(door.x, 32) && near(door.z, 24) && near(door.yawDegrees, 180),
               "door on the north edge, over the path tile at x 32, facing north");
@@ -861,7 +950,7 @@ int main() {
 
     run("Each facing puts the door on that side", [&] {
         const auto doorFor = [&](int facing) {
-            return firstOf(platform::planBuilding(big, styleFits(6, 8), facingEntry(facing), -1),
+            return firstOf(platform::planBuilding(big, anyStyle, roofFits(6, 8), facingEntry(facing), -1),
                            platform::Piece::Door);
         };
         const platform::PiecePlacement south = doorFor(0), east = doorFor(90), north = doorFor(180),
@@ -876,11 +965,10 @@ int main() {
 
     run("Odd side lengths stretch the panels to fit exactly", [&] {
         // 7 wide: 4 panels of 1.75. 5 deep: 3 panels of 1.667.
-        const auto pieces = platform::planBuilding({0, 0, 7, 5, true}, styleFits(6, 8), facingEntry(0), -1);
+        const auto pieces = platform::planBuilding({0, 0, 7, 5, true}, anyStyle, roofFits(6, 8), facingEntry(0), -1);
         bool stretched = true;
         for (const platform::PiecePlacement& p : pieces) {
-            if (p.piece == platform::Piece::Wall || p.piece == platform::Piece::Window ||
-                p.piece == platform::Piece::Door) {
+            if (isPanel(p)) {
                 const bool alongX = near(p.yawDegrees, 0) || near(p.yawDegrees, 180);
                 stretched = stretched && near(p.scaleX, alongX ? 0.875f : 5.0f / 6.0f);
             }
@@ -888,46 +976,65 @@ int main() {
         check(stretched, "panel stretch = side length / panels / 2");
     });
 
-    run("The roof is turned and stretched to the footprint", [&] {
-        // An 8x6 building with a roof made for 6 (x) by 8 (z): turned 90 degrees, no stretch.
+    run("The roof's ridge runs along the longer side, stretched to the footprint", [&] {
+        // 8x6 is longer in X: the roof (ridge along its own Z) is turned 90 degrees.
         const platform::PiecePlacement turned =
-            firstOf(platform::planBuilding(big, styleFits(6, 8), facingEntry(0), -1), platform::Piece::Roof);
+            firstOf(platform::planBuilding(big, anyStyle, roofFits(6, 8), facingEntry(0), -1), platform::Piece::Roof);
         check(near(turned.yawDegrees, 90) && near(turned.scaleX, 1) && near(turned.scaleZ, 1),
               "6x8 roof on an 8x6 building is turned, not stretched");
         check(near(turned.x, 33) && near(turned.z, 27) && near(turned.y, platform::kit::kWallTop),
               "centred on the footprint, on top of the walls");
 
-        // A 6x5 building is long in X but the 6x8 roof is long in Z, so it is turned.
-        const platform::PiecePlacement small =
-            firstOf(platform::planBuilding({0, 0, 6, 5, true}, styleFits(6, 8), facingEntry(0), -1),
-                    platform::Piece::Roof);
-        check(near(small.yawDegrees, 90) && near(small.scaleX, 5.0f / 6.0f) && near(small.scaleZ, 6.0f / 8.0f),
-              "turned, then its X spans the 5-tile depth and its Z the 6-tile width");
+        // 6x5 with a 6x6 roof: turned, squashed across the ridge (5 of 6).
+        const platform::PiecePlacement small = firstOf(
+            platform::planBuilding({0, 0, 6, 5, true}, anyStyle, roofFits(6, 6), facingEntry(0), -1),
+            platform::Piece::Roof);
+        check(near(small.yawDegrees, 90) && near(small.scaleX, 5.0f / 6.0f) && near(small.scaleZ, 1.0f),
+              "turned; across = 5/6, along = 6/6");
 
-        // A 5x7 building is long in Z like the roof: not turned.
-        const platform::PiecePlacement same =
-            firstOf(platform::planBuilding({0, 0, 5, 7, true}, styleFits(6, 8), facingEntry(0), -1),
-                    platform::Piece::Roof);
+        // 5x7 is longer in Z: not turned.
+        const platform::PiecePlacement same = firstOf(
+            platform::planBuilding({0, 0, 5, 7, true}, anyStyle, roofFits(6, 8), facingEntry(0), -1),
+            platform::Piece::Roof);
         check(near(same.yawDegrees, 0) && near(same.scaleX, 5.0f / 6.0f) && near(same.scaleZ, 7.0f / 8.0f),
-              "not turned");
+              "not turned; across = 5/6, along = 7/8");
+    });
+
+    run("Gables close both ends of the ridge", [&] {
+        // Ridge along X (8x6): gables on the east and west walls.
+        const auto across = allOf(platform::planBuilding(big, anyStyle, roofFits(6, 8), facingEntry(0), -1),
+                                  platform::Piece::Gable);
+        check(across.size() == 2 && near(across[0].x, 37) && near(across[0].yawDegrees, 90) &&
+                  near(across[1].x, 29) && near(across[1].yawDegrees, 270),
+              "east gable faces east, west gable faces west");
+        check(near(across[0].z, 27) && near(across[0].y, platform::kit::kWallTop) && near(across[0].scaleX, 1.0f),
+              "centred on the wall, on the wall top, 6 wide like the roof");
+
+        // Ridge along Z (5x7): gables on the south and north walls, squashed like the roof.
+        const auto along = allOf(
+            platform::planBuilding({0, 0, 5, 7, true}, anyStyle, roofFits(6, 8), facingEntry(0), -1),
+            platform::Piece::Gable);
+        check(along.size() == 2 && near(along[0].z, 7) && near(along[0].yawDegrees, 0) && near(along[1].z, 0) &&
+                  near(along[1].yawDegrees, 180) && near(along[0].x, 2.5f) && near(along[0].scaleX, 5.0f / 6.0f),
+              "south and north gables, 5/6 wide");
     });
 
     run("Height scale and offset move every piece", [&] {
-        platform::BuildingStyle style = styleFits(6, 8);
+        platform::BuildingStyle style;
         style.heightScale = 1.5f;
         platform::BuildingEntry entry = facingEntry(0);
         entry.offsetX = 0.25f;
         entry.offsetY = -0.1f;
-        const auto plain = platform::planBuilding(big, styleFits(6, 8), facingEntry(0), -1);
-        const auto moved = platform::planBuilding(big, style, entry, -1);
+        const auto plain = platform::planBuilding(big, anyStyle, roofFits(6, 8), facingEntry(0), -1);
+        const auto moved = platform::planBuilding(big, style, roofFits(6, 8), entry, -1);
         bool allMoved = plain.size() == moved.size();
         for (std::size_t i = 0; allMoved && i < plain.size(); ++i) {
-            const float expectedY = (plain[i].piece == platform::Piece::Roof) ? plain[i].y * 1.5f - 0.1f
-                                                                                : plain[i].y - 0.1f;
+            // Pieces that sit on the wall top (roof, gables) rise with the taller walls.
+            const float expectedY = plain[i].y * 1.5f - 0.1f;
             allMoved = near(moved[i].x, plain[i].x + 0.25f) && near(moved[i].y, expectedY) &&
                        near(moved[i].z, plain[i].z) && near(moved[i].scaleY, 1.5f);
         }
-        check(allMoved, "x and y offset added, heights scaled by 1.5, roof raised to the taller walls");
+        check(allMoved, "x and y offset added, heights scaled by 1.5, roof and gables raised to the taller walls");
     });
 
     if (failures > 0) {

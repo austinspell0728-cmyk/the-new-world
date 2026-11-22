@@ -6,17 +6,23 @@
 # (files in assets/medieval/). A building NOT listed, or one whose pieces
 # fail to load, is drawn as the old flat-colored box.
 #
-# [style] blocks: the pieces a kind of house is made of.
-#   name       what [building] blocks call it
-#   wall       plain 2 m wall panel
-#   window     2 m wall panel with a window
-#   door       2 m wall panel with a doorway
-#   door_leaf  the door that fills the doorway
-#   corner     the post standing on each outside corner
-#   roof       the roof model
-#   roof_fits  the footprint (x, z in tiles) the roof model was made for;
-#              it is stretched to fit the real building
-#   scale      optional height scale for the whole house (default 1.0)
+# [style] blocks: the pieces a kind of house's walls are made of.
+#   name          what [building] blocks call it
+#   wall          plain 2 m wall panel
+#   window        2 m wall panel with a window opening
+#   window_frame  the window that fills that opening
+#   door          2 m wall panel with a doorway
+#   door_leaf     the door that fills the doorway
+#   corner        the post standing on each outside corner
+#   scale         optional height scale for the whole house (default 1.0)
+#
+# [roof] blocks: roofs a building can get.
+#   name   what a [building] can call it
+#   model  the roof model
+#   gable  the piece that closes the triangle under each end of the ridge
+#   fits   the footprint the roof was made for, in tiles: across the
+#          ridge, then along it. The ridge always runs along the building's
+#          longer side, and the roof is stretched to fit the building.
 #
 # [building] blocks: one per building in the town.
 #   tile    any WORLD tile the building covers (town layout column/row + 2)
@@ -24,22 +30,75 @@
 #   facing  the side the door is on: 0 = south, 90 = east, 180 = north,
 #           270 = west. The door goes where a path meets that side. If it
 #           looks wrong, change this number.
+#   roof    optional [roof] name. Without it, the roof that needs the least
+#           stretching is used.
 #   offset  optional nudge in tiles: x, y, z (y raises or sinks it)
 #
 # Comments must be on their own line.
 
-[style]
-name      = plaster
-wall      = Wall_Plaster_Straight.gltf
-window    = Wall_Plaster_Window_Wide_Round.gltf
-door      = Wall_Plaster_Door_Round.gltf
-door_leaf = Door_1_Round.gltf
-corner    = Corner_Exterior_Wood.gltf
-roof      = Roof_RoundTiles_6x8.gltf
-roof_fits = 6, 8
+# --- House styles -------------------------------------------------------------
 
-# The biggest building (8 x 6 tiles), east of the main road. Its path
-# comes in from the north.
+# Plaster walls with wooden beams, arched windows and door.
+[style]
+name         = plaster
+wall         = Wall_Plaster_Straight.gltf
+window       = Wall_Plaster_Window_Wide_Round.gltf
+window_frame = Window_Wide_Round1.gltf
+door         = Wall_Plaster_Door_Round.gltf
+door_leaf    = Door_1_Round.gltf
+corner       = Corner_Exterior_Wood.gltf
+
+# Rough brick walls, arched windows and door, thicker corner posts.
+[style]
+name         = brick
+wall         = Wall_UnevenBrick_Straight.gltf
+window       = Wall_UnevenBrick_Window_Wide_Round.gltf
+window_frame = Window_Wide_Round1.gltf
+door         = Wall_UnevenBrick_Door_Round.gltf
+door_leaf    = Door_1_Round.gltf
+corner       = Corner_ExteriorWide_Wood.gltf
+
+# Timber-framed plaster (wooden grid), square windows and door.
+[style]
+name         = timber
+wall         = Wall_Plaster_WoodGrid.gltf
+window       = Wall_Plaster_Window_Wide_Flat.gltf
+window_frame = Window_Wide_Flat1.gltf
+door         = Wall_Plaster_Door_Flat.gltf
+door_leaf    = Door_1_Flat.gltf
+corner       = Corner_Exterior_Wood.gltf
+
+# --- Roofs (all round clay tiles: the only full roofs in the free kit) --------
+
+# Narrow and lower.
+[roof]
+name  = tiles 4x6
+model = Roof_RoundTiles_4x6.gltf
+gable = Roof_Front_Brick4.gltf
+fits  = 4, 6
+
+[roof]
+name  = tiles 4x8
+model = Roof_RoundTiles_4x8.gltf
+gable = Roof_Front_Brick4.gltf
+fits  = 4, 8
+
+# Wide and taller.
+[roof]
+name  = tiles 6x6
+model = Roof_RoundTiles_6x6.gltf
+gable = Roof_Front_Brick6.gltf
+fits  = 6, 6
+
+[roof]
+name  = tiles 6x8
+model = Roof_RoundTiles_6x8.gltf
+gable = Roof_Front_Brick6.gltf
+fits  = 6, 8
+
+# --- Buildings ---------------------------------------------------------------
+
+# The biggest building, 8 x 6, east of the main road.
 [building]
 tile   = 29, 24
 style  = plaster

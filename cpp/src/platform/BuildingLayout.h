@@ -25,8 +25,10 @@ namespace kit {
 // outside face is the plane z = 0 and they face +Z; the wall's thickness
 // is behind that face (inside the house).
 constexpr float kPanelWidth = 2.0f;
-// Top of the plaster on a wall panel; roofs are placed with their origin
-// here (their eaves hang below it, outside the walls).
+// Top of the plaster on a wall panel; roofs and gables are placed with
+// their origin here (the roof's eaves hang below it, outside the walls).
+// Window frames share their wall panel's origin, and gables face +Z like
+// wall panels.
 constexpr float kWallTop = 3.0f;
 // Where the door leaf goes inside a door panel (its hinge, in the panel's
 // own coordinates): left edge of the doorway, in the middle of the wall.
@@ -60,16 +62,24 @@ struct PlacedBuilding {
     std::size_t building = 0; // index into BuildingMap::footprints
     BuildingEntry entry;
     BuildingStyle style;
+    BuildingRoof roof;
 };
 
-// Matches each [building] to the building covering its tile. Throws
-// std::runtime_error ("file:line: problem") if the tile is not a building,
-// two entries pick the same building, or the building is not a plain
-// rectangle (only rectangles can be assembled from wall panels yet).
+// The roof whose `fits` is closest to the footprint (comparing across the
+// ridge and along it; the ridge runs along the footprint's longer side).
+// "Closest" = least stretching, counting stretch and squash alike. On a
+// tie the roof listed first wins. nullptr if `roofs` is empty.
+const BuildingRoof* chooseRoof(const Footprint& footprint, const std::vector<BuildingRoof>& roofs);
+
+// Matches each [building] to the building covering its tile, and picks its
+// roof (the one named, or chooseRoof). Throws std::runtime_error
+// ("file:line: problem") if the tile is not a building, two entries pick
+// the same building, or the building is not a plain rectangle (only
+// rectangles can be assembled from wall panels yet).
 std::vector<PlacedBuilding> matchBuildings(const BuildingMap& map, const BuildingData& data);
 
 // Which kit piece a placement uses.
-enum class Piece { Wall, Window, Door, DoorLeaf, Corner, Roof };
+enum class Piece { Wall, Window, WindowFrame, Door, DoorLeaf, Corner, Roof, Gable };
 
 // One piece in the world. To place it: scale it (in its own axes), turn it
 // by yawDegrees around Y (0 = its +Z faces south/+Z, 90 = faces east/+X,
@@ -95,9 +105,11 @@ int findDoorTile(const game::World& world, const Footprint& footprint, int facin
 //   - each side is split into panels of about 2 m (stretched to fit);
 //   - the door side gets a door panel (+ door leaf) at `doorTile` (see
 //     findDoorTile; -1 = middle of the side);
-//   - every other panel alternates window / plain wall;
-//   - a corner post on each corner and the roof stretched over the top.
+//   - every other panel alternates window (+ frame) / plain wall;
+//   - a corner post on each corner;
+//   - the roof stretched over the top, its ridge along the longer side,
+//     and a gable closing each end of the ridge.
 std::vector<PiecePlacement> planBuilding(const Footprint& footprint, const BuildingStyle& style,
-                                         const BuildingEntry& entry, int doorTile);
+                                         const BuildingRoof& roof, const BuildingEntry& entry, int doorTile);
 
 } // namespace platform

@@ -201,8 +201,10 @@ BuildingModels::BuildingModels(const game::World& world, const BuildingMap& map,
     for (const PlacedBuilding& building : placed) {
         const BuildingStyle& style = building.style;
         const std::map<Piece, std::string> files = {
-            {Piece::Wall, style.wall},     {Piece::Window, style.window}, {Piece::Door, style.door},
-            {Piece::DoorLeaf, style.doorLeaf}, {Piece::Corner, style.corner}, {Piece::Roof, style.roof},
+            {Piece::Wall, style.wall},           {Piece::Window, style.window},
+            {Piece::WindowFrame, style.windowFrame}, {Piece::Door, style.door},
+            {Piece::DoorLeaf, style.doorLeaf},   {Piece::Corner, style.corner},
+            {Piece::Roof, building.roof.model},  {Piece::Gable, building.roof.gable},
         };
         bool allLoaded = true;
         for (const auto& [piece, file] : files) {
@@ -217,7 +219,7 @@ BuildingModels::BuildingModels(const game::World& world, const BuildingMap& map,
 
         const Footprint& footprint = map.footprints[building.building];
         const int doorTile = findDoorTile(world, footprint, building.entry.facingDegrees);
-        for (const PiecePlacement& placement : planBuilding(footprint, style, building.entry, doorTile)) {
+        for (const PiecePlacement& placement : planBuilding(footprint, style, building.roof, building.entry, doorTile)) {
             const Source& source = loaded.at(files.at(placement.piece));
             const Model& model = sources_[static_cast<std::size_t>(source.model)];
             const Matrix toWorld = placementMatrix(placement);
