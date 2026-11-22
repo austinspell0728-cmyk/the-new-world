@@ -27,6 +27,7 @@
 #include "../src/platform/BuildingData.h"
 #include "../src/platform/BuildingLayout.h"
 #include "../src/platform/CameraRelativeMove.h"
+#include "../src/platform/ControlsData.h"
 #include "../src/platform/InputMath.h"
 #include "../src/platform/TreeData.h"
 #include "../src/platform/TreeLayout.h"
@@ -203,6 +204,30 @@ bool isFinite(game::Vec3 v) { return std::isfinite(v.x) && std::isfinite(v.y) &&
 bool onSegment(game::Vec3 p, game::Vec3 a, game::Vec3 b) {
     return near(distanceBetween(a, p) + distanceBetween(p, b), distanceBetween(a, b), 0.001f);
 }
+
+// Parses controls text the same way the game parses data/controls.txt.
+platform::ControlsData parseControlsText(const std::string& text) {
+    std::istringstream in(text);
+    return platform::parseControls(in, "test");
+}
+
+// True if parsing `text` fails with an error message containing `expected`.
+bool controlsTextFails(const std::string& text, const std::string& expected) {
+    try {
+        parseControlsText(text);
+    } catch (const std::runtime_error& error) {
+        if (std::string(error.what()).find(expected) != std::string::npos) {
+            return true;
+        }
+        std::cerr << "  (got: " << error.what() << ")\n";
+    }
+    return false;
+}
+
+// A complete [gamepad] block (7 lines) and [buttons] block (3 lines).
+const std::string kGamepadBlock = "[gamepad]\nmove_stick = left\ncamera_stick = right\ndead_zone = 0.2\n"
+                                  "response_curve = 1.5\ncamera_speed = 150\ninvert_y = no\n";
+const std::string kButtonsBlock = "[buttons]\ninteract = a\npause = start\n";
 
 } // namespace
 
@@ -1580,6 +1605,91 @@ int main() {
         device.update(false, true, true);
         check(device.update(false, false, false) == InputDevice::KeyboardMouse, "pad unplugged -> keyboard/mouse");
         check(device.update(false, true, false) == InputDevice::KeyboardMouse, "no pad: pad activity ignored");
+    });
+
+    // --- Controls file (data/controls.txt) ------------------------------------
+
+    run("Controls text reads the sticks, feel and buttons", [] {
+        const platform::ControlsData c = parseControlsText(
+            "# pad\n[gamepad]\nmove_stick = right\ncamera_stick = left\ndead_zone = 0.25\n"
+            "response_curve = 2\ncamera_speed = 200\ninvert_y = yes\n"
+            "[buttons]\ninteract = x\npause = back\nattack = rt\ndodge = none\n");
+        check(c.moveStick == platform::PadStick::Right && c.cameraStick == platform::PadStick::Left, "sticks");
+        check(near(c.deadZone, 0.25f) && near(c.responseCurve, 2.0f) && near(c.cameraSpeed, 200.0f) && c.invertY,
+              "feel");
+        check(c.interact == platform::PadButton::X && c.pause == platform::PadButton::Back &&
+                  c.attack == platform::PadButton::RT && c.dodge == platform::PadButton::None &&
+                  c.cast == platform::PadButton::None,
+              "buttons; cast not listed defaults to none");
+        check(std::string(platform::buttonLabel(platform::PadButton::A)) == "A" &&
+                  std::string(platform::buttonLabel(platform::PadButton::Start)) == "Start",
+              "on-screen labels");
+    });
+
+    run("The real data/controls.txt is valid: A talks, Start quits, no combat buttons yet", [] {
+        const platform::ControlsData c = platform::loadControlsFile("data/controls.txt");
+        check(c.interact == platform::PadButton::A && c.pause == platform::PadButton::Start, "A and Start");
+        check(c.attack == platform::PadButton::None && c.dodge == platform::PadButton::None &&
+                  c.cast == platform::PadButton::None,
+              "attack, dodge and cast reserved but unassigned");
+        check(c.moveStick == platform::PadStick::Left && near(c.deadZone, 0.2f), "left stick walks, dead zone 0.2");
+    });
+
+    run("Bad controls text is reported with file and line", [] {
+        const std::string& pad = kGamepadBlock;      // lines 1-7
+        const std::string& buttons = kButtonsBlock;  // 3 lines
+        check(controlsTextFails("interact = a\n", "test:1: 'interact = a' must come after a [gamepad] or [buttons] line"),
+              "key before any section");
+        check(controlsTextFails("[keyboard]\n", "test:1: unknown section '[keyboard]'"), "unknown section");
+        check(controlsTextFails("[gamepad]\nrumble\n", "test:2: expected a [section] or 'key = value'"), "stray text");
+        check(controlsTextFails("[gamepad]\nrumble = yes\n", "test:2: unknown key 'rumble' in [gamepad]"),
+              "unknown gamepad key");
+        check(controlsTextFails("[buttons]\njump = a\n", "test:2: unknown key 'jump' in [buttons]"),
+              "unknown action (no jumping)");
+        check(controlsTextFails("[gamepad]\ndead_zone = 0.2\ndead_zone = 0.3\n", "test:3: 'dead_zone' is set twice"),
+              "repeated key");
+        check(controlsTextFails("[buttons]\npause =\n", "test:2: 'pause' has no value"), "empty value");
+        check(controlsTextFails(pad + buttons + pad, "test:11: [gamepad] appears twice (first on line 1)"),
+              "section twice");
+        check(controlsTextFails("[gamepad]\nmove_stick = left\n" + buttons, "test:1: [gamepad] is missing 'camera_stick'"),
+              "missing gamepad key, reported at the section line");
+        check(controlsTextFails(pad + "[buttons]\npause = start\n", "test:8: [buttons] is missing 'interact'"),
+              "missing interact");
+        check(controlsTextFails(buttons, "test:1: the file has no [gamepad] section"), "no [gamepad]");
+        check(controlsTextFails(pad, "test:1: the file has no [buttons] section"), "no [buttons]");
+
+        // Bad values.
+        check(controlsTextFails("[gamepad]\nmove_stick = middle\n", "test:2: move_stick must be left or right"),
+              "unknown stick");
+        check(controlsTextFails("[gamepad]\nmove_stick = left\ncamera_stick = left\ndead_zone = 0.2\n"
+                                "response_curve = 1.5\ncamera_speed = 150\ninvert_y = no\n" + buttons,
+                                "test:3: move_stick and camera_stick are both the left stick"),
+              "one stick for both, reported at camera_stick");
+        check(controlsTextFails("[gamepad]\ndead_zone = 0.95\n", "test:2: dead_zone must be a number from 0 to 0.9"),
+              "dead zone too big");
+        check(controlsTextFails("[gamepad]\ndead_zone = small\n", "dead_zone must be a number from 0 to 0.9"),
+              "dead zone as a word");
+        check(controlsTextFails("[gamepad]\nresponse_curve = 0.5\n", "test:2: response_curve must be a number from 1 to 3"),
+              "curve too low");
+        check(controlsTextFails("[gamepad]\ncamera_speed = 5\n", "test:2: camera_speed must be a number from 10 to 720"),
+              "camera too slow");
+        check(controlsTextFails("[gamepad]\ninvert_y = maybe\n", "test:2: invert_y must be yes or no"), "invert_y");
+        check(controlsTextFails("[buttons]\ninteract = z\n", "test:2: unknown button 'z'"), "unknown button");
+        check(controlsTextFails(pad + "[buttons]\ninteract = a\npause = a\n",
+                                "test:10: button 'a' is already used for 'interact' on line 9"),
+              "one button for two actions");
+        check(!controlsTextFails(pad + buttons + "attack = none\ndodge = none\ncast = none\n", "x"),
+              "several actions on none is fine");
+    });
+
+    run("A missing controls file is a clear error", [] {
+        bool threw = false;
+        try {
+            platform::loadControlsFile("data/no-such-controls.txt");
+        } catch (const std::runtime_error& error) {
+            threw = std::string(error.what()) == "Could not open controls file 'data/no-such-controls.txt'.";
+        }
+        check(threw, "names the missing file");
     });
 
     if (failures > 0) {

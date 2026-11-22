@@ -1,0 +1,39 @@
+# Gamepad controls. Loaded when the game starts; edit and re-run, no
+# rebuild needed. The keyboard and mouse always work as well; these only
+# set up the gamepad.
+#
+# [gamepad]
+#   move_stick      left or right: the stick that walks
+#   camera_stick    left or right: the stick that turns the camera
+#   dead_zone       0 to 0.9: how far a stick must move before it counts
+#                   (stops a worn stick from drifting)
+#   response_curve  1 to 3: 1 = linear; higher makes small tilts finer
+#                   while full tilt stays the same
+#   camera_speed    10 to 720: degrees per second at full tilt
+#   invert_y        yes or no: yes = pushing up tilts the view down
+#
+# [buttons]  action = button
+#   buttons: a, b, x, y (Xbox positions: bottom, right, left, top face
+#   buttons; Cross/Circle/Square/Triangle on PlayStation), lb, rb, lt, rt,
+#   back, start, ls, rs (stick clicks), dpad_up, dpad_down, dpad_left,
+#   dpad_right, or none. One button can only do one action.
+#   interact  talk to the NPC next to you (same as E)
+#   pause     quit, like Esc (there is no pause menu yet)
+#   attack, dodge, cast: reserved for later, not used by the game yet.
+#
+# Comments must be on their own line.
+
+[gamepad]
+move_stick     = left
+camera_stick   = right
+dead_zone      = 0.2
+response_curve = 1.5
+camera_speed   = 150
+invert_y       = no
+
+[buttons]
+interact = a
+pause    = start
+attack   = none
+dodge    = none
+cast     = none
