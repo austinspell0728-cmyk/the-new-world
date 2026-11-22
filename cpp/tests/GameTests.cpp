@@ -6,6 +6,7 @@
 // Coordinates: the ground is X/Z and Y is height (see src/game/Vec3.h).
 // In the test maps below, text columns are X and text rows are Z.
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <iostream>
@@ -26,6 +27,7 @@
 #include "../src/platform/BuildingLayout.h"
 #include "../src/platform/CameraRelativeMove.h"
 #include "../src/platform/TreeData.h"
+#include "../src/platform/TreeLayout.h"
 
 namespace {
 
@@ -1139,6 +1141,118 @@ int main() {
             threw = std::string(error.what()) == "Could not open tree file 'data/no-such-trees.txt'.";
         }
         check(threw, "names the missing file");
+    });
+
+    // --- Tree choice per tile (platform/TreeLayout.h) -------------------------
+
+    // oak (weight 3), pine and birch (weight 1 each), 20% size variation.
+    const platform::TreeData treeData = parseTreeText(
+        treeBlock("oak", 3) + treeBlock("pine") + treeBlock("birch") + "[rules]\nscale_variation = 0.2\nseed = 7\n");
+    const auto samePlacement = [](const platform::TreePlacement& a, const platform::TreePlacement& b) {
+        return a.variant == b.variant && a.x == b.x && a.z == b.z && a.yawDegrees == b.yawDegrees &&
+               a.scale == b.scale;
+    };
+
+    run("The same tile always gets the same tree", [&] {
+        bool same = true;
+        for (int x = -5; x < 40; x += 3) {
+            for (int z = -5; z < 40; z += 4) {
+                // A freshly parsed copy of the data: nothing is remembered between calls.
+                const platform::TreeData copy = parseTreeText(
+                    treeBlock("oak", 3) + treeBlock("pine") + treeBlock("birch") +
+                    "[rules]\nscale_variation = 0.2\nseed = 7\n");
+                same = same && samePlacement(platform::placeTree(x, z, treeData), platform::placeTree(x, z, copy));
+            }
+        }
+        check(same, "identical results for the same tile and data");
+        check(platform::tileHash(12, 34, 7, 1) == platform::tileHash(12, 34, 7, 1), "hash is stable");
+        check(platform::tileHash(12, 34, 7, 1) != platform::tileHash(34, 12, 7, 1), "x and z are not interchangeable");
+    });
+
+    run("Different tiles spread over variants, turns and sizes", [&] {
+        int counts[3] = {0, 0, 0};
+        int quarterTurns[4] = {0, 0, 0, 0};
+        float smallest = 10.0f, largest = 0.0f;
+        bool inRange = true;
+        for (int x = 0; x < 40; ++x) {
+            for (int z = 0; z < 40; ++z) { // 1600 tiles
+                const platform::TreePlacement t = platform::placeTree(x, z, treeData);
+                ++counts[t.variant];
+                inRange = inRange && t.yawDegrees >= 0.0f && t.yawDegrees < 360.0f;
+                ++quarterTurns[static_cast<int>(t.yawDegrees / 90.0f) % 4];
+                smallest = std::min(smallest, t.scale);
+                largest = std::max(largest, t.scale);
+            }
+        }
+        check(counts[0] > 0 && counts[1] > 0 && counts[2] > 0, "every variant is used");
+        // Expected 960 / 320 / 320 for weights 3 / 1 / 1.
+        check(counts[0] > 840 && counts[0] < 1080 && counts[1] > 240 && counts[1] < 400 &&
+                  counts[2] > 240 && counts[2] < 400,
+              "picks follow the weights (oak about 3x as often)");
+        check(quarterTurns[0] > 300 && quarterTurns[1] > 300 && quarterTurns[2] > 300 && quarterTurns[3] > 300,
+              "turns spread around the full circle");
+        check(inRange, "turn between 0 and 360 degrees");
+        check(smallest >= 0.7f * 0.8f - 0.0001f && largest <= 0.7f * 1.2f + 0.0001f, "size within +-20% of 0.7");
+        check(smallest < 0.7f * 0.85f && largest > 0.7f * 1.15f, "sizes use most of that range");
+    });
+
+    run("Neighbouring tiles do not repeat the same tree", [&] {
+        // Along a row of 30 tiles, count tiles with the same variant AND
+        // nearly the same turn as the tile before: should almost never happen.
+        int repeats = 0;
+        for (int x = 0; x < 30; ++x) {
+            const platform::TreePlacement a = platform::placeTree(x, 5, treeData);
+            const platform::TreePlacement b = platform::placeTree(x + 1, 5, treeData);
+            repeats += (a.variant == b.variant && std::abs(a.yawDegrees - b.yawDegrees) < 10.0f) ? 1 : 0;
+        }
+        check(repeats <= 2, "neighbours look different");
+    });
+
+    run("The seed changes the picks", [&] {
+        const platform::TreeData otherSeed = parseTreeText(
+            treeBlock("oak", 3) + treeBlock("pine") + treeBlock("birch") + "[rules]\nscale_variation = 0.2\nseed = 8\n");
+        int differences = 0;
+        for (int x = 0; x < 20; ++x) {
+            differences += samePlacement(platform::placeTree(x, 3, treeData), platform::placeTree(x, 3, otherSeed)) ? 0 : 1;
+        }
+        check(differences >= 18, "almost every tile changes");
+    });
+
+    run("The trunk lands on the tile centre whatever the turn and size", [] {
+        const platform::TreeData offset = parseTreeText(
+            "[tree]\nname = leaning\nmodel = m.gltf\nscale = 0.5\ntrunk = 0.4, -0.6\n");
+        bool centred = true;
+        for (int x = 0; x < 12; ++x) {
+            const platform::TreePlacement t = platform::placeTree(x, 9, offset);
+            // Where the trunk ends up: the origin plus the turned, scaled trunk position.
+            const float yaw = t.yawDegrees * kPi / 180.0f;
+            const float tx = 0.4f * t.scale, tz = -0.6f * t.scale;
+            const float trunkX = t.x + tx * std::cos(yaw) + tz * std::sin(yaw);
+            const float trunkZ = t.z - tx * std::sin(yaw) + tz * std::cos(yaw);
+            centred = centred && near(trunkX, x + 0.5f, 0.001f) && near(trunkZ, 9.5f, 0.001f);
+        }
+        check(centred, "trunk at (x + 0.5, z + 0.5) for every tile");
+        const platform::TreePlacement plain = platform::placeTree(3, 4, parseTreeText(treeBlock("oak")));
+        check(near(plain.x, 3.5f) && near(plain.z, 4.5f), "trunk 0, 0: origin on the tile centre");
+    });
+
+    run("Every tree tile in the town gets a tree, and nothing else does", [] {
+        const game::World world = game::buildStartingWorld(game::data::kWorldSeed);
+        const platform::TreeData data = platform::loadTreeFile("data/trees.txt");
+        const std::vector<platform::TreePlacement> trees = platform::placeTrees(world, data);
+        int treeTiles = 0;
+        for (int z = 0; z < world.depth(); ++z) {
+            for (int x = 0; x < world.width(); ++x) {
+                treeTiles += world.tileAt(x, z) == game::Tile::Tree ? 1 : 0;
+            }
+        }
+        bool onTreeTiles = true;
+        for (const platform::TreePlacement& t : trees) {
+            onTreeTiles = onTreeTiles && world.tileAt(t.tileX, t.tileZ) == game::Tile::Tree;
+        }
+        check(treeTiles == 20 && static_cast<int>(trees.size()) == treeTiles, "20 tree tiles, 20 trees");
+        check(onTreeTiles, "each tree on its own tree tile");
+        check(platform::placeTrees(world, parseTreeText("")).empty(), "no variants: no model trees (box trees stay)");
     });
 
     if (failures > 0) {
