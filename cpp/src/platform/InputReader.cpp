@@ -25,9 +25,12 @@ game::PlayerInput readPlayerInput(float cameraYaw) {
     return cameraRelativeMove(axis(KEY_S, KEY_W), axis(KEY_A, KEY_D), cameraYaw);
 }
 
-CameraInput readCameraInput(float frameTime) {
+CameraInput readCameraInput(float frameTime, bool useMouse) {
     const float keyTurn = render::kCameraKeyTurnDegPerSec * DEG2RAD * frameTime;
-    const Vector2 mouse = GetMouseDelta(); // pixels moved since last frame
+
+    // Pixels moved since last frame. Ignored while the mouse is released,
+    // so moving it over to another window does not spin the camera.
+    const Vector2 mouse = useMouse ? GetMouseDelta() : Vector2{0.0f, 0.0f};
 
     CameraInput input;
 
@@ -40,5 +43,7 @@ CameraInput readCameraInput(float frameTime) {
 
     return input;
 }
+
+bool toggleMouseCapturePressed() { return IsKeyPressed(KEY_TAB); }
 
 } // namespace platform

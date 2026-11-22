@@ -54,8 +54,14 @@ int main(int argc, char** argv) {
     // Screenshot mode skips this and ignores camera input, so the saved
     // image always shows the default view.
     const bool interactive = (screenshotPath == nullptr);
+    bool mouseCaptured = false;
+    // Frames of mouse movement to ignore. Right after capturing, the first
+    // reported delta can include the jump to the window centre.
+    int ignoreMouseFrames = 0;
     if (interactive) {
         DisableCursor();
+        mouseCaptured = true;
+        ignoreMouseFrames = 1;
     }
 
     platform::CameraRig cameraRig;
@@ -84,7 +90,23 @@ int main(int argc, char** argv) {
         //    The camera is presentation, so it turns once per frame using real
         //    frame time rather than in fixed game steps.
         if (interactive) {
-            const platform::CameraInput look = platform::readCameraInput(frameTime);
+            // Tab frees the mouse for other windows, and captures it again.
+            if (platform::toggleMouseCapturePressed()) {
+                mouseCaptured = !mouseCaptured;
+                if (mouseCaptured) {
+                    DisableCursor();
+                    ignoreMouseFrames = 1;
+                } else {
+                    EnableCursor();
+                }
+            }
+
+            const bool useMouse = mouseCaptured && ignoreMouseFrames == 0;
+            if (ignoreMouseFrames > 0) {
+                --ignoreMouseFrames;
+            }
+
+            const platform::CameraInput look = platform::readCameraInput(frameTime, useMouse);
             cameraRig.orbit(look.yawDelta, look.pitchDelta);
         }
 

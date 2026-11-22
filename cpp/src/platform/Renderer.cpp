@@ -112,8 +112,8 @@ void Renderer::drawPlayer(const game::Player& player) const {
 
 void Renderer::drawHud(const game::Game& game) const {
     const game::Vec3 pos = game.player().position;
-    DrawText("Move: WASD    Camera: mouse, Q/E, arrows    Quit: Esc", 12, 12, 20,
-             render::kHudTextColor);
+    DrawText("Move: WASD    Camera: mouse, Q/E, arrows    Free mouse: Tab    Quit: Esc", 12, 12,
+             20, render::kHudTextColor);
     DrawText(TextFormat("Tile: x %d, z %d", static_cast<int>(pos.x), static_cast<int>(pos.z)), 12,
              38, 20, render::kHudTextColor);
     DrawFPS(render::kWindowWidth - 100, 12);
