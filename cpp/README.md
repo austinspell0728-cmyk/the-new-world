@@ -24,10 +24,13 @@ Developer flags (both ignore the camera controls):
 
 ```sh
 ./build/new-world --screenshot build/shot.png   # save one frame and quit
+./build/new-world --screenshot build/shot.png 33 21 0 25
+                    # same, camera aimed at tile (33, 21), facing yaw 0 (south), pitch 25
 ./build/new-world --benchmark                   # draw uncapped, print average FPS, quit
 ```
 
-The game reads `data/npcs.txt` at startup. It looks in `data/` under the
+The game reads `data/npcs.txt` and `data/buildings.txt` at startup, and the
+building models from `assets/medieval/`. It looks in `data/` under the
 folder you start it from (`cpp/` with `make run`), then in `../data/` next to
 the exe, so `cpp/build/new-world` also works when started from elsewhere.
 
@@ -52,6 +55,13 @@ the exe, so `cpp/build/new-world` also works when started from elsewhere.
   building; a door is drawn wherever a path or the square meets it.
 - Every solid tile (building, tree, stall, well, water, wall) blocks its
   whole square, and so does each NPC's tile.
+- `data/buildings.txt` says which buildings are assembled from Medieval
+  Village MegaKit pieces (walls, door, corners, roof in
+  `assets/medieval/`), with their style and door side. Look only: footprints
+  and collision still come from the town map. Buildings not listed, or whose
+  pieces fail to load, are drawn as the old colored boxes. At startup all
+  pieces are merged into one mesh per material, so the houses cost a handful
+  of draws per frame however many there are.
 - `data/npcs.txt` holds the NPCs: name, tile, facing, color and one line
   each. Edit it and re-run; no rebuild needed. Mistakes (a typo'd key, an
   NPC inside a building) stop the game with the file, line and problem.
@@ -84,7 +94,9 @@ The world is built in layers in `src/game/WorldBuilder.*`:
 ## Layout
 
 ```
+assets/medieval/ the kit pieces the town uses (CC0, see its README.txt)
 data/
+  buildings.txt  house styles and which building uses which (loaded at runtime)
   npcs.txt       NPC names, positions, colors and lines (loaded at runtime)
 src/
   game/          rules and data, plain C++, never includes raylib
@@ -100,11 +112,14 @@ src/
     CameraRelativeMove.h WASD + camera yaw -> world direction (no raylib)
     CameraRig.*          third-person orbit camera
     WorldMesh.*          the static map baked into one GPU mesh
+    BuildingData.*       reads data/buildings.txt (no raylib, tested)
+    BuildingLayout.*     where each kit piece goes on a footprint (no raylib, tested)
+    BuildingModels.*     loads the pieces, merges them per material, draws them
     Renderer.*           draws the world, characters, labels, dialogue, HUD
     RenderConfig.h       window, camera, shape sizes and colors
   main.cpp       main loop: turn camera -> read input -> step -> draw
 tests/
-  GameTests.cpp  43 tests for movement, map, town, NPC and control rules
+  GameTests.cpp  58 tests for movement, map, town, NPC, control and building-layout rules
 ```
 
 The rule of thumb: `game/` decides *what happens*; `platform/` decides *how
@@ -119,3 +134,6 @@ breaks the test build straight away.
 - No jumping, falling or slopes; everyone stands at y = 0.
 - Props and NPCs block their whole tile, even though they are drawn smaller.
 - NPCs stand still; dialogue is one line each, no choices.
+- Kit buildings have no lights, only the same fake per-direction shading
+  as the boxes, so they look flat. Their window openings are empty and the
+  roof's gable ends are open (separate kit pieces, not added yet).

@@ -39,7 +39,12 @@ void drawLabel(const char* text, int centreX, int top, int fontSize) {
 
 } // namespace
 
-Renderer::Renderer(const game::World& world) : worldMesh_(world) {}
+Renderer::Renderer(const game::World& world, const BuildingMap& buildings,
+                   const std::vector<PlacedBuilding>& placed, const std::string& assetDir)
+    // buildingModels_ is built first (declared first): it decides which
+    // buildings the box mesh should leave out.
+    : buildingModels_(world, buildings, placed, assetDir),
+      worldMesh_(world, buildings, buildingModels_.modelled()) {}
 
 void Renderer::draw(const game::Game& game, const CameraRig& cameraRig) const {
     BeginDrawing();
@@ -49,6 +54,7 @@ void Renderer::draw(const game::Game& game, const CameraRig& cameraRig) const {
     // and seen through the camera.
     BeginMode3D(cameraRig.camera());
     worldMesh_.draw();
+    buildingModels_.draw();
     for (const game::Npc& npc : game.npcs()) {
         drawCharacter(npc.position, npc.halfSize, npc.height, npc.facingYaw, toColor(npc.color));
     }

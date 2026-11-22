@@ -20,14 +20,17 @@
 #include "raylib.h"
 
 #include "../game/World.h"
+#include "BuildingLayout.h"
 
 namespace platform {
 
 class WorldMesh {
 public:
     // Builds and uploads the mesh. The window (and so the GPU context) must
-    // already be open.
-    explicit WorldMesh(const game::World& world);
+    // already be open. Buildings marked true in `modelled` (by index into
+    // `buildings.footprints`) are drawn by BuildingModels instead, so they
+    // are left out here; every other building is a colored box.
+    WorldMesh(const game::World& world, const BuildingMap& buildings, const std::vector<bool>& modelled);
     ~WorldMesh();
 
     // Owns GPU memory, so it cannot be copied.

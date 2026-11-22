@@ -19,7 +19,6 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
-#include <queue>
 #include <set>
 
 #include "rlgl.h"
@@ -180,41 +179,6 @@ Color groundColor(Tile tile) {
     return MAGENTA; // Bright "missing" color makes a forgotten tile type obvious.
 }
 
-// Groups touching building tiles into buildings. Returns, for every tile, the
-// index of the building it belongs to, or -1 if it is not a building.
-std::vector<int> labelBuildings(const game::World& world) {
-    const int width = world.width(), depth = world.depth();
-    std::vector<int> ids(static_cast<std::size_t>(width * depth), -1);
-    auto index = [width](int x, int z) { return static_cast<std::size_t>(z * width + x); };
-
-    int nextId = 0;
-    for (int z = 0; z < depth; ++z) {
-        for (int x = 0; x < width; ++x) {
-            if (world.tileAt(x, z) != Tile::Building || ids[index(x, z)] != -1) {
-                continue;
-            }
-            // Flood fill from this tile across its touching building tiles.
-            std::queue<std::array<int, 2>> open;
-            open.push({x, z});
-            ids[index(x, z)] = nextId;
-            while (!open.empty()) {
-                const auto [cx, cz] = open.front();
-                open.pop();
-                for (const auto& [dx, dz] : {std::array<int, 2>{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
-                    const int nx = cx + dx, nz = cz + dz;
-                    if (nx >= 0 && nz >= 0 && nx < width && nz < depth &&
-                        world.tileAt(nx, nz) == Tile::Building && ids[index(nx, nz)] == -1) {
-                        ids[index(nx, nz)] = nextId;
-                        open.push({nx, nz});
-                    }
-                }
-            }
-            ++nextId;
-        }
-    }
-    return ids;
-}
-
 // --- Props, each standing in the middle of its tile ------------------------------
 
 void addTree(MeshBuilder& mesh, float cx, float cz) {
@@ -259,20 +223,29 @@ constexpr std::array<std::array<int, 2>, 4> kNeighbours = {{{1, 0}, {-1, 0}, {0,
 
 } // namespace
 
-WorldMesh::WorldMesh(const game::World& world) {
+WorldMesh::WorldMesh(const game::World& world, const BuildingMap& buildings,
+                     const std::vector<bool>& modelled) {
     MeshBuilder mesh;
     const int width = world.width(), depth = world.depth();
     const float groundBottom = -render::kGroundThickness;
-    const std::vector<int> buildingIds = labelBuildings(world);
 
     auto inside = [&](int x, int z) { return x >= 0 && z >= 0 && x < width && z < depth; };
+    // A building drawn from kit models (BuildingModels) is left out of this
+    // mesh: its tiles are treated as plain path, which the house stands on.
+    auto isModelled = [&](int id) {
+        return id >= 0 && static_cast<std::size_t>(id) < modelled.size() && modelled[static_cast<std::size_t>(id)];
+    };
     auto buildingAt = [&](int x, int z) {
-        return inside(x, z) ? buildingIds[static_cast<std::size_t>(z * width + x)] : -1;
+        const int id = buildings.idAt(x, z);
+        return isModelled(id) ? -1 : id;
+    };
+    auto tileAt = [&](int x, int z) {
+        return isModelled(buildings.idAt(x, z)) ? Tile::Path : world.tileAt(x, z);
     };
 
     for (int z = 0; z < depth; ++z) {
         for (int x = 0; x < width; ++x) {
-            const Tile tile = world.tileAt(x, z);
+            const Tile tile = tileAt(x, z);
             const float top = surfaceHeight(tile);
             const float x0 = static_cast<float>(x), x1 = x0 + 1.0f;
             const float z0 = static_cast<float>(z), z1 = z0 + 1.0f;
@@ -295,7 +268,7 @@ WorldMesh::WorldMesh(const game::World& world) {
             // Side faces, only where the neighbour's surface is lower.
             for (const auto& [dx, dz] : kNeighbours) {
                 const int nx = x + dx, nz = z + dz;
-                const Tile neighbour = inside(nx, nz) ? world.tileAt(nx, nz) : Tile::Wall;
+                const Tile neighbour = inside(nx, nz) ? tileAt(nx, nz) : Tile::Wall;
                 const float neighbourTop = inside(nx, nz) ? surfaceHeight(neighbour) : groundBottom;
                 if (neighbourTop >= top) {
                     continue;

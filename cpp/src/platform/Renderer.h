@@ -8,9 +8,13 @@
 
 #pragma once
 
+#include <string>
+#include <vector>
+
 #include "raylib.h"
 
 #include "../game/Game.h"
+#include "BuildingModels.h"
 #include "CameraRig.h"
 #include "WorldMesh.h"
 
@@ -18,13 +22,19 @@ namespace platform {
 
 class Renderer {
 public:
-    // Prepares GPU data for `world` (the static map mesh). The window must
-    // already be open.
-    explicit Renderer(const game::World& world);
+    // Prepares GPU data for `world`: the static map mesh, and the
+    // buildings in `placed` assembled from the kit pieces in `assetDir`
+    // (ending in '/'). Buildings whose pieces fail to load stay boxes. The
+    // window must already be open.
+    Renderer(const game::World& world, const BuildingMap& buildings,
+             const std::vector<PlacedBuilding>& placed, const std::string& assetDir);
 
     // Draws one complete frame, seen through `cameraRig`: world, player,
     // NPCs, their name labels and on-screen help text.
     void draw(const game::Game& game, const CameraRig& cameraRig) const;
+
+    // Meshes drawn per frame for the kit buildings (shown by --benchmark).
+    int buildingDrawCount() const { return buildingModels_.drawCount(); }
 
 private:
     // A standing capsule with a small "nose" showing which way it faces.
@@ -39,6 +49,7 @@ private:
     // line, wrapped to fit.
     void drawDialogue(const game::Npc& speaker) const;
 
+    BuildingModels buildingModels_; // must stay before worldMesh_ (see constructor)
     WorldMesh worldMesh_;
 };
 
