@@ -28,7 +28,7 @@ void CameraRig::orbit(float yawDelta, float pitchDelta) {
                         render::kCameraMaxPitchDeg * DEG2RAD);
 }
 
-void CameraRig::follow(game::Vec3 playerFeet) {
+void CameraRig::follow(game::Vec3 playerFeet, const game::World& world, float frameTime) {
     // The point we look at: a little above the player's feet.
     const Vector3 target{playerFeet.x, playerFeet.y + render::kCameraLookHeight, playerFeet.z};
 
@@ -41,9 +41,15 @@ void CameraRig::follow(game::Vec3 playerFeet) {
     const float behind = render::kCameraDistance * std::cos(pitch_);
     const float above = render::kCameraDistance * std::sin(pitch_);
 
-    // Stand `behind` units opposite to the facing direction, `above` units up.
-    camera_.position = {target.x - forwardX * behind, target.y + above,
-                        target.z - forwardZ * behind};
+    // Where we would like to be: `behind` units opposite to the facing
+    // direction, `above` units up.
+    const game::Vec3 lookAt{target.x, target.y, target.z};
+    const game::Vec3 wanted{target.x - forwardX * behind, target.y + above, target.z - forwardZ * behind};
+
+    // Where we may be: pulled in if something is in the way (game rule,
+    // no raylib), smoothed over a few frames.
+    const game::Vec3 actual = occlusion_.update(world, lookAt, wanted, frameTime);
+    camera_.position = {actual.x, actual.y, actual.z};
     camera_.target = target;
 }
 

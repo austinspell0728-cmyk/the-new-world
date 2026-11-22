@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
         }
 
         // 4. Aim the camera at the player's new position, then draw.
-        cameraRig.follow(customView ? viewTarget : game.player().position);
+        cameraRig.follow(customView ? viewTarget : game.player().position, game.world(), frameTime);
         renderer->draw(game, cameraRig);
 
         // Screenshot mode: wait a few frames so the window has settled.

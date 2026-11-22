@@ -14,7 +14,9 @@
 
 #include "raylib.h"
 
+#include "../game/CameraOcclusion.h"
 #include "../game/Vec3.h"
+#include "../game/World.h"
 
 namespace platform {
 
@@ -29,8 +31,11 @@ public:
     void orbit(float yawDelta, float pitchDelta);
 
     // Moves the camera so it looks at `playerFeet` from the current angles.
-    // Call once per frame after the game has updated.
-    void follow(game::Vec3 playerFeet);
+    // If a building, tree crown or other tall thing is between the player
+    // and that spot, the camera is pulled in (smoothly) to stay in front of
+    // it; see game/CameraOcclusion.h. Call once per frame after the game has
+    // updated, with the frame's real time.
+    void follow(game::Vec3 playerFeet, const game::World& world, float frameTime);
 
     // The raylib camera to pass to BeginMode3D.
     const Camera3D& camera() const { return camera_; }
@@ -42,6 +47,7 @@ public:
 private:
     float yaw_;
     float pitch_;
+    game::CameraOcclusion occlusion_; // remembers the smoothed distance
     Camera3D camera_{};
 };
 

@@ -116,6 +116,7 @@ src/
     Npc.h          one NPC
     NpcData.*      reads the NPC text format
     Game.*         player, movement, collision, NPCs, talking, fixed 60 Hz update
+    CameraOcclusion.* keeps the camera out of buildings and tree crowns
     Vec3.h         small 3D vector type and ground-plane helpers
   platform/      window, input, camera and drawing
     InputReader.*        keys and mouse -> movement, camera turns, E, Tab
@@ -133,7 +134,7 @@ src/
     RenderConfig.h       window, camera, shape sizes and colors
   main.cpp       main loop: turn camera -> read input -> step -> draw
 tests/
-  GameTests.cpp  72 tests for movement, map, town, NPC, control, building and tree rules
+  GameTests.cpp  81 tests for movement, map, town, NPC, control, building, tree and camera rules
 ```
 
 The rule of thumb: `game/` decides *what happens*; `platform/` decides *how
@@ -144,10 +145,12 @@ breaks the test build straight away.
 
 ## Known limits
 
-- The camera has no collision, so it can pass through buildings and trees.
-  With the kit houses (about 8 m tall with their roofs) and trees (4-7 m,
-  crowns about 3 m across) this happens often near them: the view fills
-  with roof, wall or leaves.
+- The camera is pulled in when a building, tree crown, stall or wall is
+  between it and the player (`game/CameraOcclusion.*`). The town is treated
+  as simple height columns per tile, rounded up, so the camera sometimes
+  comes in a little earlier than the drawn models need. The pull-in is
+  smoothed over 0.1 s, so for those few frames the camera can still be
+  slightly inside a roof or crown when you turn quickly.
 - Tree crowns and low pine branches spread over the neighbouring tiles at
   head height, but only the trunk's tile blocks movement.
 - No jumping, falling or slopes; everyone stands at y = 0.
