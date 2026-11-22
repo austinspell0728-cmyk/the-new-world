@@ -27,10 +27,13 @@ namespace platform {
 class WorldMesh {
 public:
     // Builds and uploads the mesh. The window (and so the GPU context) must
-    // already be open. Buildings marked true in `modelled` (by index into
-    // `buildings.footprints`) are drawn by BuildingModels instead, so they
-    // are left out here; every other building is a colored box.
-    WorldMesh(const game::World& world, const BuildingMap& buildings, const std::vector<bool>& modelled);
+    // already be open. Buildings marked true in `modelledBuildings` (by
+    // index into `buildings.footprints`) are drawn by BuildingModels
+    // instead, so they are left out here; every other building is a colored
+    // box. Likewise tree tiles marked true in `modelledTrees` (by tile,
+    // z * width + x) are drawn by TreeModels; the rest get the box tree.
+    WorldMesh(const game::World& world, const BuildingMap& buildings, const std::vector<bool>& modelledBuildings,
+              const std::vector<bool>& modelledTrees);
     ~WorldMesh();
 
     // Owns GPU memory, so it cannot be copied.

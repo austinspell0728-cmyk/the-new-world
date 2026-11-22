@@ -29,8 +29,9 @@ Developer flags (both ignore the camera controls):
 ./build/new-world --benchmark                   # draw uncapped, print average FPS, quit
 ```
 
-The game reads `data/npcs.txt` and `data/buildings.txt` at startup, and the
-building models from `assets/medieval/`. It looks in `data/` under the
+The game reads `data/npcs.txt`, `data/buildings.txt` and `data/trees.txt`
+at startup, and the models from `assets/medieval/` (buildings) and
+`assets/nature/` (trees). It looks in `data/` under the
 folder you start it from (`cpp/` with `make run`), then in `../data/` next to
 the exe, so `cpp/build/new-world` also works when started from elsewhere.
 
@@ -63,6 +64,12 @@ the exe, so `cpp/build/new-world` also works when started from elsewhere.
   pieces fail to load, are drawn as the old colored boxes. At startup all
   pieces are merged into one mesh per material, so the houses cost a handful
   of draws per frame however many there are.
+- `data/trees.txt` lists the tree models (Stylized Nature MegaKit, in
+  `assets/nature/`) with their base size, trunk position and weight. Each
+  `T` tile picks a variant, a turn and a size (+-15%) from a hash of its
+  tile coordinates and the file's seed: no randomness, the same tile always
+  shows the same tree. Trees still block exactly their tile. A variant
+  whose model fails to load falls back to the old box tree.
 - `data/npcs.txt` holds the NPCs: name, tile, facing, color and one line
   each. Edit it and re-run; no rebuild needed. Mistakes (a typo'd key, an
   NPC inside a building) stop the game with the file, line and problem.
@@ -95,9 +102,11 @@ The world is built in layers in `src/game/WorldBuilder.*`:
 ## Layout
 
 ```
-assets/medieval/ the kit pieces the town uses (CC0, see its README.txt)
+assets/medieval/ the building kit pieces the town uses (CC0, see its README.txt)
+assets/nature/   the trees the town uses (CC0, see its README.txt)
 data/
   buildings.txt  house styles and which building uses which (loaded at runtime)
+  trees.txt      tree variants and the rules for picking them (loaded at runtime)
   npcs.txt       NPC names, positions, colors and lines (loaded at runtime)
 src/
   game/          rules and data, plain C++, never includes raylib
@@ -115,12 +124,16 @@ src/
     WorldMesh.*          the static map baked into one GPU mesh
     BuildingData.*       reads data/buildings.txt (no raylib, tested)
     BuildingLayout.*     where each kit piece goes on a footprint (no raylib, tested)
-    BuildingModels.*     loads the pieces, merges them per material, draws them
+    BuildingModels.*     assembles the kit buildings (via MergedModels)
+    TreeData.*           reads data/trees.txt (no raylib, tested)
+    TreeLayout.*         which tree, turn and size per tile, from a hash (no raylib, tested)
+    TreeModels.*         draws the trees (via MergedModels)
+    MergedModels.*       loads models once, merges all copies into one mesh per material
     Renderer.*           draws the world, characters, labels, dialogue, HUD
     RenderConfig.h       window, camera, shape sizes and colors
   main.cpp       main loop: turn camera -> read input -> step -> draw
 tests/
-  GameTests.cpp  61 tests for movement, map, town, NPC, control and building-layout rules
+  GameTests.cpp  72 tests for movement, map, town, NPC, control, building and tree rules
 ```
 
 The rule of thumb: `game/` decides *what happens*; `platform/` decides *how
@@ -131,9 +144,12 @@ breaks the test build straight away.
 
 ## Known limits
 
-- The camera has no collision, so it can pass through buildings. With the
-  kit houses (about 8 m tall with their roofs) this happens often near
-  them: the view fills with roof or wall.
+- The camera has no collision, so it can pass through buildings and trees.
+  With the kit houses (about 8 m tall with their roofs) and trees (4-7 m,
+  crowns about 3 m across) this happens often near them: the view fills
+  with roof, wall or leaves.
+- Tree crowns and low pine branches spread over the neighbouring tiles at
+  head height, but only the trunk's tile blocks movement.
 - No jumping, falling or slopes; everyone stands at y = 0.
 - Props and NPCs block their whole tile, even though they are drawn smaller.
 - NPCs stand still; dialogue is one line each, no choices.

@@ -224,7 +224,7 @@ constexpr std::array<std::array<int, 2>, 4> kNeighbours = {{{1, 0}, {-1, 0}, {0,
 } // namespace
 
 WorldMesh::WorldMesh(const game::World& world, const BuildingMap& buildings,
-                     const std::vector<bool>& modelled) {
+                     const std::vector<bool>& modelled, const std::vector<bool>& modelledTrees) {
     MeshBuilder mesh;
     const int width = world.width(), depth = world.depth();
     const float groundBottom = -render::kGroundThickness;
@@ -341,7 +341,15 @@ WorldMesh::WorldMesh(const game::World& world, const BuildingMap& buildings,
             // Props stand on top of their ground tile.
             const float cx = x0 + 0.5f, cz = z0 + 0.5f;
             switch (tile) {
-            case Tile::Tree: addTree(mesh, cx, cz); break;
+            case Tile::Tree: {
+                // Model trees (TreeModels) replace the box tree; the grass
+                // under them stays.
+                const auto index = static_cast<std::size_t>(z * width + x);
+                if (index >= modelledTrees.size() || !modelledTrees[index]) {
+                    addTree(mesh, cx, cz);
+                }
+                break;
+            }
             case Tile::Stall:
                 addStall(mesh, x0, z0, render::kAwningColors[static_cast<std::size_t>(x + z) %
                                                              render::kAwningColors.size()]);

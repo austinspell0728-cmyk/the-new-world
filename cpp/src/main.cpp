@@ -39,6 +39,8 @@
 #include "platform/InputReader.h"
 #include "platform/RenderConfig.h"
 #include "platform/Renderer.h"
+#include "platform/TreeData.h"
+#include "platform/TreeLayout.h"
 
 // Finds a file or folder under cpp/ (e.g. "data/npcs.txt"). Works when the
 // game is started from cpp/ (as `make run` does) and when the exe is started
@@ -72,6 +74,8 @@ int main(int argc, char** argv) {
     // empty window.
     platform::BuildingMap buildings;
     std::vector<platform::PlacedBuilding> placedBuildings;
+    platform::TreeData treeData;
+    std::vector<platform::TreePlacement> trees;
     game::Game game = [&] {
         try {
             // Terrain from the seed, then the hand-made town (WorldBuilder.h).
@@ -81,6 +85,9 @@ int main(int argc, char** argv) {
             buildings = platform::findBuildings(world);
             placedBuildings = platform::matchBuildings(
                 buildings, platform::loadBuildingFile(findCppPath("data/buildings.txt")));
+            // Which tree model, turn and size each tree tile gets (look only).
+            treeData = platform::loadTreeFile(findCppPath("data/trees.txt"));
+            trees = platform::placeTrees(world, treeData);
             return game::Game(std::move(world), std::move(npcs));
         } catch (const std::exception& error) {
             std::cerr << "Failed to load the world: " << error.what() << '\n';
@@ -114,7 +121,8 @@ int main(int argc, char** argv) {
                         std::strtof(argv[6], nullptr) * DEG2RAD - cameraRig.pitch());
     }
     const platform::Renderer renderer(game.world(), buildings, placedBuildings,
-                                      findCppPath("assets/medieval") + "/");
+                                      findCppPath("assets/medieval") + "/", treeData, trees,
+                                      findCppPath("assets/nature") + "/");
 
     // Fixed time step: real elapsed time is collected in `accumulator`, and
     // the game advances in equal slices of kFixedTimeStep. Rendering can run
@@ -199,7 +207,8 @@ int main(int argc, char** argv) {
                 std::cout << "Benchmark: " << kTimedFrames << " frames in " << seconds
                           << " s = " << (kTimedFrames / seconds) << " FPS ("
                           << (seconds * 1000.0 / kTimedFrames) << " ms per frame), "
-                          << renderer.buildingDrawCount() << " building mesh draw(s) per frame\n";
+                          << renderer.buildingDrawCount() << " building and " << renderer.treeDrawCount()
+                          << " tree mesh draw(s) per frame\n";
                 break;
             }
         }

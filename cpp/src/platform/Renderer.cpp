@@ -39,12 +39,14 @@ void drawLabel(const char* text, int centreX, int top, int fontSize) {
 
 } // namespace
 
-Renderer::Renderer(const game::World& world, const BuildingMap& buildings,
-                   const std::vector<PlacedBuilding>& placed, const std::string& assetDir)
-    // buildingModels_ is built first (declared first): it decides which
-    // buildings the box mesh should leave out.
-    : buildingModels_(world, buildings, placed, assetDir),
-      worldMesh_(world, buildings, buildingModels_.modelled()) {}
+Renderer::Renderer(const game::World& world, const BuildingMap& buildings, const std::vector<PlacedBuilding>& placed,
+                   const std::string& buildingAssetDir, const TreeData& treeData,
+                   const std::vector<TreePlacement>& trees, const std::string& treeAssetDir)
+    // The model drawers are built first (declared first): they decide which
+    // buildings and trees the box mesh should leave out.
+    : buildingModels_(world, buildings, placed, buildingAssetDir),
+      treeModels_(world, treeData, trees, treeAssetDir),
+      worldMesh_(world, buildings, buildingModels_.modelled(), treeModels_.modelledTiles()) {}
 
 void Renderer::draw(const game::Game& game, const CameraRig& cameraRig) const {
     BeginDrawing();
@@ -55,6 +57,7 @@ void Renderer::draw(const game::Game& game, const CameraRig& cameraRig) const {
     BeginMode3D(cameraRig.camera());
     worldMesh_.draw();
     buildingModels_.draw();
+    treeModels_.draw();
     for (const game::Npc& npc : game.npcs()) {
         drawCharacter(npc.position, npc.halfSize, npc.height, npc.facingYaw, toColor(npc.color));
     }

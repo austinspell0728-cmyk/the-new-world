@@ -23,9 +23,11 @@
 #
 # Comments must be on their own line.
 
+# Seed 5 happens to use every variant close to its weight across the
+# town's 20 trees (seed 1 never picked oak 5).
 [rules]
 scale_variation = 0.15
-seed            = 1
+seed            = 5
 
 # Broadleaf trees: about 5-6.5 m tall at this scale, leaves from about
 # 1.7-2 m up, so the player walks under the crown.
