@@ -11,7 +11,7 @@
 *.so
 *.dylib
 
-# Never commit raylib itself; it is installed locally (see Makefile)
+# Never commit raylib itself; CMake downloads it into build/ (see CMakeLists.txt)
 raylib/
 
 # The full Medieval Village MegaKit download lives here locally (300+ MB).
