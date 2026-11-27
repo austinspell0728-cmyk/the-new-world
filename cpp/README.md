@@ -9,34 +9,70 @@ All art is placeholder: flat-colored boxes and capsules.
 
 ## Build and run
 
-You need a C++17 compiler, GNU make and a local raylib install (raylib is not
-committed to this repo).
+Builds with [CMake](https://cmake.org/) on Windows and macOS (and Linux).
+raylib is not committed: CMake downloads raylib 6.0 the first time you
+configure (pinned by checksum) and builds it along with the game, which
+takes a few minutes once. GitHub Actions builds and tests every change to
+`cpp/` on Windows (MSVC) and macOS (Apple Clang), see
+`.github/workflows/cpp.yml`.
+
+The same commands work on both, run from `cpp/`:
 
 ```sh
-cd cpp
-make RAYLIB_PATH=/path/to/raylib/src   # default: C:/raylib/raylib/src
-make run                               # build and start the game
-make test                              # rule tests, no raylib needed
-make clean
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release   # configure (downloads raylib once)
+cmake --build build --config Release             # build the game and the tests
+ctest --test-dir build -C Release                # run the rule tests
+cmake --build build --config Release --target run  # build and start the game
 ```
 
-Developer flags (both ignore the camera controls):
+### Windows
+
+You need CMake 3.25 or newer and a C++17 compiler, either of:
+
+- **Visual Studio 2022** (the "Desktop development with C++" workload, which
+  includes CMake). Run the commands above in a "Developer PowerShell for
+  VS". The game ends up in `build\Release\new-world.exe`.
+- **MinGW-w64**, e.g. [w64devkit](https://github.com/skeeto/w64devkit),
+  which includes CMake and Ninja. Add `-G Ninja` to the configure line;
+  the game ends up in `build/new-world.exe`.
+
+### macOS
+
+Install the Xcode command line tools (`xcode-select --install`) and CMake
+(`brew install cmake`), then run the commands above in Terminal. The game
+ends up in `build/new-world`. (raylib builds against Apple's OpenGL,
+which is deprecated but still works; its deprecation warnings come from
+raylib, not from our code.)
+
+### Options
+
+- `-DNEW_WORLD_BUILD_GAME=OFF`: only the rule tests, no raylib download
+  (fast).
+- `-DFETCHCONTENT_SOURCE_DIR_RAYLIB=/path/to/raylib`: use a raylib source
+  folder you already have instead of downloading it.
+
+### Developer flags
 
 ```sh
-./build/new-world --screenshot build/shot.png   # save one frame and quit
-./build/new-world --screenshot build/shot.png 33 21 0 25
+build/new-world --screenshot build/shot.png   # save one frame and quit
+build/new-world --screenshot build/shot.png 33 21 0 25
                     # same, camera aimed at tile (33, 21), facing yaw 0 (south), pitch 25
-./build/new-world --benchmark                   # draw uncapped, print average FPS, quit
-./build/new-world --screenshot build/shot.png --fake-pad 0,1,0,0
+build/new-world --benchmark                   # draw uncapped, print average FPS, quit
+build/new-world --screenshot build/shot.png --fake-pad 0,1,0,0
                     # pretend a pad holds its sticks (lx,ly,rx,ry; y up) and
                     # print where the player and camera ended up
 ```
 
+(With Visual Studio the game is `build\Release\new-world.exe`.)
+Screenshot and benchmark runs ignore the camera controls and any real
+gamepad.
+
 The game reads `data/npcs.txt`, `data/buildings.txt`, `data/trees.txt` and
-`data/controls.txt` at startup, and the models from `assets/medieval/` (buildings) and
-`assets/nature/` (trees). It looks in `data/` under the
-folder you start it from (`cpp/` with `make run`), then in `../data/` next to
-the exe, so `cpp/build/new-world` also works when started from elsewhere.
+`data/controls.txt` at startup, and the models from `assets/medieval/`
+(buildings) and `assets/nature/` (trees). It looks for them under the
+folder you start it from (`cpp/`, which the `run` target uses), then one
+and two folders above the exe, so `build/new-world` and
+`build/Release/new-world.exe` also work when started from elsewhere.
 
 ## Controls
 
@@ -161,9 +197,10 @@ tests/
 
 The rule of thumb: `game/` decides *what happens*; `platform/` decides *how
 it looks and which key does what*. `game/` takes a plain world direction and
-an `interact()` call, and never knows a camera or keyboard exists. Because
-`make test` builds without raylib, a raylib include slipping into `game/`
-breaks the test build straight away.
+an `interact()` call, and never knows a camera or keyboard exists. The
+rules library (`game/` plus the raylib-free files in `platform/`) and the
+tests are built without raylib's headers (see `CMakeLists.txt`), so a
+raylib include slipping into them breaks the build straight away.
 
 ## Known limits
 
