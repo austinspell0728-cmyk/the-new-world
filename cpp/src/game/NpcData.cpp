@@ -3,11 +3,13 @@
 #include "NpcData.h"
 
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 #include "GameData.h"
 

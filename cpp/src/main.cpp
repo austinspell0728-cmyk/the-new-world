@@ -29,6 +29,7 @@
 //                                Works alone or with --screenshot; prints
 //                                where the player and camera ended up.
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -59,13 +60,22 @@
 #include "platform/TreeLayout.h"
 
 // Finds a file or folder under cpp/ (e.g. "data/npcs.txt"). Works when the
-// game is started from cpp/ (as `make run` does) and when the exe is started
-// from anywhere else, by also looking next to the exe's folder (cpp/build/..).
+// game is started from cpp/ (as the `run` build target does) and when the
+// exe is started from anywhere else, by also looking above the exe's
+// folder: cpp/build/new-world (one folder up) or, with Visual Studio and
+// Xcode builds, cpp/build/Release/new-world (two folders up).
 std::string findCppPath(const std::string& relative) {
     if (FileExists(relative.c_str()) || DirectoryExists(relative.c_str())) {
         return relative;
     }
-    return std::string(GetApplicationDirectory()) + "../" + relative;
+    const std::string exeDir = GetApplicationDirectory();
+    for (const char* up : {"../", "../../"}) {
+        const std::string candidate = exeDir + up + relative;
+        if (FileExists(candidate.c_str()) || DirectoryExists(candidate.c_str())) {
+            return candidate;
+        }
+    }
+    return relative; // not found: the error message names the plain path
 }
 
 // The command line flags (see the header comment).
@@ -287,7 +297,13 @@ int main(int argc, char** argv) {
 
         // Screenshot mode: wait a few frames so the window has settled.
         if (screenshotPath != nullptr && ++frame == 30) {
-            TakeScreenshot(screenshotPath);
+            // (raylib's TakeScreenshot would put the path under the starting
+            // folder, which breaks absolute paths; save it exactly as given.)
+            Image shot = LoadImageFromScreen();
+            if (!ExportImage(shot, screenshotPath)) {
+                std::cerr << "Could not save the screenshot to '" << screenshotPath << "'.\n";
+            }
+            UnloadImage(shot);
             break;
         }
 

@@ -33,8 +33,8 @@ bool tileBlocks(const World& world, int x, int z, float y) {
     }
     for (int dz = -1; dz <= 1; ++dz) {
         for (int dx = -1; dx <= 1; ++dx) {
-            const Tile near = world.tileAt(x + dx, z + dz);
-            if ((inEaves && near == Tile::Building) || (inCrowns && near == Tile::Tree)) {
+            const Tile neighbour = world.tileAt(x + dx, z + dz);
+            if ((inEaves && neighbour == Tile::Building) || (inCrowns && neighbour == Tile::Tree)) {
                 return true;
             }
         }

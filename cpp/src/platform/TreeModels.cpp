@@ -4,11 +4,7 @@
 
 #include <iostream>
 
-// raymath.h is C code; its `= { 0 }` initialisers trip -Wextra in C++.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
-#include "raymath.h"
-#pragma GCC diagnostic pop
+#include "RaylibMath.h"
 
 namespace platform {
 
